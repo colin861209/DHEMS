@@ -1,0 +1,17 @@
+[
+{
+  "directory": "/home/hems/how/DHEMS/build",
+  "command": "/usr/bin/g++-7   -I/home/hems/how/DHEMS/include -I/usr/include/mysql -I/home/hems/glpk-4.65-built/src  -g   -o CMakeFiles/GHEMS.dir/src/GHEMS.cpp.o -c /home/hems/how/DHEMS/src/GHEMS.cpp",
+  "file": "/home/hems/how/DHEMS/src/GHEMS.cpp"
+},
+{
+  "directory": "/home/hems/how/DHEMS/build",
+  "command": "/usr/bin/g++-7   -I/home/hems/how/DHEMS/include -I/usr/include/mysql -I/home/hems/glpk-4.65-built/src  -g   -o CMakeFiles/GHEMS.dir/src/new2D.cpp.o -c /home/hems/how/DHEMS/src/new2D.cpp",
+  "file": "/home/hems/how/DHEMS/src/new2D.cpp"
+},
+{
+  "directory": "/home/hems/how/DHEMS/build",
+  "command": "/usr/bin/g++-7   -I/home/hems/how/DHEMS/include -I/usr/include/mysql -I/home/hems/glpk-4.65-built/src  -g   -o CMakeFiles/GHEMS.dir/src/SQLFunction.cpp.o -c /home/hems/how/DHEMS/src/SQLFunction.cpp",
+  "file": "/home/hems/how/DHEMS/src/SQLFunction.cpp"
+}
+]
