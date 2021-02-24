@@ -20,7 +20,7 @@
 #define P_5 5.66
 #define P_6 6.41
 
-#define Hydro_Price 0.08
+float Hydro_Price = 0.0;
 #define Hydro_Cons 0.04		// unit kWh/g
 #define FC_START_POWER 0.35 // Pfc start power
 using namespace std;
@@ -32,7 +32,7 @@ int time_block = 0, variable = 0, divide = 0, sample_time = 0, point_num = 0, pi
 
 float delta_T = 0.0;
 float Cbat = 0.0, Vsys = 0.0, SOC_ini = 0.0, SOC_min = 0.0, SOC_max = 0.0, SOC_thres = 0.0, Pbat_min = 0.0, Pbat_max = 0.0, Pgrid_max = 0.0, Psell_max = 0.0, Delta_battery = 0.0, Pfc_max = 0.0;
-
+string weather;
 float step1_bill = 0.0, step1_sell = 0.0, step1_PESS = 0.0;
 
 char column[400] = "A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21,A22,A23,A24,A25,A26,A27,A28,A29,A30,A31,A32,A33,A34,A35,A36,A37,A38,A39,A40,A41,A42,A43,A44,A45,A46,A47,A48,A49,A50,A51,A52,A53,A54,A55,A56,A57,A58,A59,A60,A61,A62,A63,A64,A65,A66,A67,A68,A69,A70,A71,A72,A73,A74,A75,A76,A77,A78,A79,A80,A81,A82,A83,A84,A85,A86,A87,A88,A89,A90,A91,A92,A93,A94,A95";
@@ -44,8 +44,11 @@ void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_
 void optimization(vector<string> variable_name, float *load_model, float *price2);
 void calculateCostInfo(float *price2);
 
-int main(int argc, const char** argv)
+int main(int argc, const char **argv)
 {
+	Hydro_Price = stof(argv[1]);
+	weather = argv[2];
+
 	time_t t = time(NULL);
 	struct tm now_time = *localtime(&t);
 	int same_day = 0, real_time = 0;
@@ -221,7 +224,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 
 	// =-=-=-=-=-=-=- choose column 'big_sunny' 'sunny' 'cloudy' in table solar_data -=-=-=-=-=-=-= //
 	float *solar2 = new float[time_block];
-	getOrUpdate_SolarInfo_ThroughSampleTime("cloudy", solar2);
+	getOrUpdate_SolarInfo_ThroughSampleTime(weather.c_str(), solar2);
 
 	printf("\n------ Starting GLPK Part ------\n");
 
@@ -367,7 +370,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 	}
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
-		coefficient[(time_block - sample_time) * 4 + 1 + i][i * variable + find_variableName_position(variable_name, "Psell")] = -1.0; //pfc
+		coefficient[(time_block - sample_time) * 4 + 1 + i][i * variable + find_variableName_position(variable_name, "Psell")] = 1.0; //pfc
 	}
 	for (i = 1; i <= (time_block - sample_time); i++)
 	{
