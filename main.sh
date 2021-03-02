@@ -1,7 +1,7 @@
 #!/bin/bash
 weather="cloudy"  
 weatherString="Weather ${weather}" 
-Hydro_Price="0.12"
+Hydro_Price="0.08"
 Hydro_PriceString="FC Price ${Hydro_Price}" 
 truncate -s 0 ~/how/DHEMS/LHEMS.log
 truncate -s 0 ~/how/DHEMS/GHEMS.log

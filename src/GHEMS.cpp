@@ -43,6 +43,7 @@ void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2)
 void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption, float *real_sell_price, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_priceSum, float totalLoad_taipowerPriceSum);
 void optimization(vector<string> variable_name, float *load_model, float *price2);
 void calculateCostInfo(float *price2);
+void insert_GHEMS_variable();
 
 int main(int argc, const char **argv)
 {
@@ -144,12 +145,14 @@ int main(int argc, const char **argv)
 		}
 	}
 
-	// =-=-=-=-=-=-=- get households' loads consumption from table 'totalLoad_model' -=-=-=-=-=-=-= //
+	// =-=-=-=-=-=-=- get households' loads consumption from table 'totalLoad_model' & uncontrollable load from table 'LHEMS_uncontrollable_load' -=-=-=-=-=-=-= //
 	float *load_model = new float[time_block];
 	for (int i = 0; i < time_block; i++)
 	{
 		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT totalLoad FROM totalLoad_model WHERE time_block = %d", i);
 		load_model[i] = turn_value_to_float(0);
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT totalLoad FROM LHEMS_uncontrollable_load WHERE time_block = %d", i);
+		load_model[i] += turn_value_to_float(0);
 	}
 
 	// =-=-=-=-=-=-=- return 1 after determine mode and get SOC -=-=-=-=-=-=-= //
@@ -162,6 +165,9 @@ int main(int argc, const char **argv)
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'Global_next_simulate_timeblock' ");
 	sample_time = turn_value_to_float(0);
 	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
+	
+	if (sample_time == 0)
+		insert_GHEMS_variable();
 
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%d-%02d-%02d' WHERE parameter_name = 'lastTime_execute' ", now_time.tm_year + 1900, now_time.tm_mon + 1, now_time.tm_mday);
 	sent_query();
@@ -958,4 +964,20 @@ void calculateCostInfo(float *price2)
 		totalLoad_taipowerPriceSum = (120.0 * P_1 + (330.0 - 120.0) * P_2 + (500.0 - 330.0) * P_3 + (700.0 - 500.0) * P_4 + (1000.0 - 700.0) * P_5 + (totalLoad_sum * 30.0 - 1000.0) * P_6) / 30.0;
 
 	updateTableCost(totalLoad, totalLoad_price, real_grid_pirce, fuelCell_kW_price, Hydrogen_g_consumption, real_sell_pirce, totalLoad_sum, totalLoad_priceSum, real_grid_pirceSum, fuelCell_kW_priceSum, Hydrogen_g_consumptionSum, real_sell_pirceSum, totalLoad_taipowerPriceSum);
+}
+
+void insert_GHEMS_variable()
+{
+	functionPrint(__func__);
+	messagePrint(__LINE__, "Vsys = ", 'F', Vsys, 'Y');
+	messagePrint(__LINE__, "Cbat = ", 'F', Cbat, 'Y');
+	messagePrint(__LINE__, "Pbat_min = ", 'F', Pbat_min, 'Y');
+	messagePrint(__LINE__, "Pbat_max = ", 'F', Pbat_max, 'Y');
+	messagePrint(__LINE__, "Pgrid_max = ", 'F', Pgrid_max, 'Y');
+	messagePrint(__LINE__, "Psell_max = ", 'F', Psell_max, 'Y');
+	messagePrint(__LINE__, "Pfc_max = ", 'F', Pfc_max, 'Y');
+
+	string ghems_variable = "`Vsys`, `Cbat`, `Pbat_min`, `Pbat_max`, `Pgrid_max`, `Psell_max`, `Pfc_max`, `datetime`";
+	snprintf(sql_buffer, sizeof(sql_buffer), "INSERT INTO `GHEMS_variable` (%s) VALUES ( '%.3f', '%.3f', '%.3f', '%.3f', '%.3f', '%.3f', '%.3f', CURRENT_TIMESTAMP)", ghems_variable.c_str(), Vsys, Cbat, Pbat_min, Pbat_max, Pgrid_max, Psell_max, Pfc_max);
+	sent_query();
 }
