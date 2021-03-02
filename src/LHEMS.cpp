@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-
+#include <iomanip>
 using namespace std;
 int h, i, j, k, m, n = 0;
 double z = 0;
@@ -35,8 +35,10 @@ void count_uninterruptAndVaryingLoads_RemainOperateTime(int, int, int *, int *, 
 void init_VaryingLoads_OperateTimeAndPower(int **, float **, int *);
 void putValues_VaryingLoads_OperateTimeAndPower(int **varying_t_d, float **varying_p_d, int **varying_t_pow, float **varying_p_pow, int *varying_start, int *varying_end, float *varying_p_max);
 void updateTableCost(float *now_grid, float *varying_grid, float *cost, float *FC_cost, float *Hydrogen_com, float *FC_every_cost, float now_power_result, float var_grid_result, float opt_cost_result, float opt_FC_cost_result, float opt_Hydrogen_result, float price_sum_now_power);
-void optimization(vector<string> variable_name, int, int *, int *, int *, int *, float *, int *, int *, int *, int *, float *, int *, int *, int *, int *, int *, int *, int **, float **, int, float *);
+void optimization(vector<string> variable_name, int, int *, int *, int *, int *, float *, int *, int *, int *, int *, float *, int *, int *, int *, int *, int *, int *, int **, float **, int, float *, float *);
 void update_loadModel(float *, float *, int);
+float *rand_operationTime(int);
+
 int main(void)
 {
 	time_t t = time(NULL);
@@ -168,6 +170,7 @@ int main(void)
 
 	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
 
+	float *uncontrollable_load = rand_operationTime(24);
 	// =-=-=-=-=-=-=- initial total load table -=-=-=-=-=-=-= //
 	if (sample_time == 0 && household_id == 1)
 	{
@@ -266,7 +269,7 @@ int main(void)
 			varying_t_pow[i][z] = int(turn_float(z + 3) * divide);
 		time_tmp.clear();
 
-		optimization(variable_name, household_id, interrupt_start, interrupt_end, interrupt_ot, interrupt_reot, interrupt_p, uninterrupt_start, uninterrupt_end, uninterrupt_ot, uninterrupt_reot, uninterrupt_p, uninterrupt_flag, varying_start, varying_end, varying_ot, varying_reot, varying_flag, varying_t_pow, varying_p_pow, app_count, price2);
+		optimization(variable_name, household_id, interrupt_start, interrupt_end, interrupt_ot, interrupt_reot, interrupt_p, uninterrupt_start, uninterrupt_end, uninterrupt_ot, uninterrupt_reot, uninterrupt_p, uninterrupt_flag, varying_start, varying_end, varying_ot, varying_reot, varying_flag, varying_t_pow, varying_p_pow, app_count, price2, uncontrollable_load);
 
 		update_loadModel(interrupt_p, uninterrupt_p, household_id);
 	}
@@ -294,7 +297,7 @@ int main(void)
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------- GLPK ---------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-void optimization(vector<string> variable_name, int household_id, int *interrupt_start, int *interrupt_end, int *interrupt_ot, int *interrupt_reot, float *interrupt_p, int *uninterrupt_start, int *uninterrupt_end, int *uninterrupt_ot, int *uninterrupt_reot, float *uninterrupt_p, int *uninterrupt_flag, int *varying_start, int *varying_end, int *varying_ot, int *varying_reot, int *varying_flag, int **varying_t_pow, float **varying_p_pow, int app_count, float *price2)
+void optimization(vector<string> variable_name, int household_id, int *interrupt_start, int *interrupt_end, int *interrupt_ot, int *interrupt_reot, float *interrupt_p, int *uninterrupt_start, int *uninterrupt_end, int *uninterrupt_ot, int *uninterrupt_reot, float *uninterrupt_p, int *uninterrupt_flag, int *varying_start, int *varying_end, int *varying_ot, int *varying_reot, int *varying_flag, int **varying_t_pow, float **varying_p_pow, int app_count, float *price2, float *uncontrollable_load)
 {
 	functionPrint(__func__);
 	time_t t = time(NULL);
@@ -508,7 +511,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	for (i = 1; i <= (time_block - sample_time); i++)
 	{
 		glp_set_row_name(mip, ((time_block - sample_time) + app_count + i), "");
-		glp_set_row_bnds(mip, ((time_block - sample_time) + app_count + i), GLP_FX, 0.0, 0.0);
+		glp_set_row_bnds(mip, ((time_block - sample_time) + app_count + i), GLP_FX, -uncontrollable_load[i - 1 + sample_time], -uncontrollable_load[i - 1 + sample_time]);
 	}
 
 	//(Uninterrupted load of auxiliary variables), sum = 1
@@ -1619,17 +1622,69 @@ void update_loadModel(float *interrupt_p, float *uninterrupt_p, int household_id
 		sent_query();
 	}
 	// =-=-=-=-=-=-=- Caculate for total load model -=-=-=-=-=-=-= //
-	for (int i = household_id - 1; i > 0; i--)
+	if (household_id == householdTotal)
 	{
-		for (int j = sample_time; j < time_block; j++)
+		for (int i = household_id; i <= householdTotal; i++)
 		{
-			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM totalLoad_model WHERE time_block = %d", i, j);
-			power_tmp[j - sample_time] += turn_value_to_float(0);
+			for (int j = sample_time; j < time_block; j++)
+			{
+				snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM totalLoad_model WHERE time_block = %d", i, j);
+				power_tmp[j - sample_time] += turn_value_to_float(0);
+			}
+		}
+		for (int i = sample_time; i < time_block; i++)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `totalLoad` = '%.3f', `time` = CURRENT_TIMESTAMP WHERE `totalLoad_model`.`time_block` = %d;", power_tmp[i - sample_time], i);
+			sent_query();
 		}
 	}
-	for (int i = sample_time; i < time_block; i++)
+}
+
+float *rand_operationTime(int start_random_time)
+{
+	float *result = new float[time_block];
+	for (int i = 0; i < time_block; i++)
+		result[i] = 0.0;
+	srand(time(NULL));
+
+	if (sample_time == 0)
 	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `totalLoad` = '%.3f', `time` = CURRENT_TIMESTAMP WHERE `totalLoad_model`.`time_block` = %d;", power_tmp[i - sample_time], i);
-		sent_query();
+		for (int i = start_random_time; i < time_block; i++)
+		{
+			int operate_tmp = rand() % 2;
+			float power_tmp = rand() / (RAND_MAX + 1.0);
+			float operate_power = operate_tmp * power_tmp;
+			if (operate_power >= 0.3)
+				result[i] = operate_power;
+		}
+		for (int i = 0; i < time_block; i++)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `household%d` = '%.1f' WHERE `time_block` = %d;", household_id, result[i], i);
+			sent_query();
+		}
+		if (household_id == householdTotal)
+		{
+			for (int j = 0; j < time_block; j++)
+			{
+				float power_total = 0.0;
+				for (int i = 1; i <= householdTotal; i++)
+				{
+					snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM `LHEMS_uncontrollable_load` WHERE time_block = %d", i, j);
+					power_total += turn_value_to_float(0);
+				}
+				snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `totalLoad` = '%.1f' WHERE `time_block` = %d;", power_total, j);
+				sent_query();
+			}
+		}
 	}
+	else
+	{
+		for (int i = 0; i < time_block; i++)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT `household%d` FROM `LHEMS_uncontrollable_load` WHERE `time_block` = %d;", household_id, i);
+			result[i] = turn_value_to_float(0);
+		}
+	}
+
+	return result;
 }
