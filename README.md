@@ -23,3 +23,12 @@
         2. Set weather & Hydro_Price from shell script main
 
 ---
+## 2021/03/02
+
++ Commit link [e012dda](https://github.com/colin861209/DHEMS/commit/e012dda857c830e031a4a65dde8bc8a9f27f7d63)
+
+* Content:
+   * LHEMS:
+      1. Uncontrollable load generate
+   * GHEMS:
+      1. I
