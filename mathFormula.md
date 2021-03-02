@@ -27,7 +27,7 @@ $$
   
   * Blanced Function
     
-    $$ P^{j}_{grid} + P^{j}_{PV} + P^{j}_{FC} - P^{j}_{sell} - P^{j}_{ESS} = \sum_{u=1}^{U}\sum_{a \in  A_{c1} \cup A_{c2} \cup A_{c3}} P_{u,a}^{j} $$
+    $$ P^{j}_{grid} + P^{j}_{PV} + P^{j}_{FC} - P^{j}_{sell} - P^{j}_{ESS} = \sum_{u=1}^{U}(\sum_{a \in  A_{c1} \cup A_{c2} \cup A_{c3}} P_{u,a}^{j} + \sum_{a \in A_{uc}} P_{u, uc}^{j}) $$
 
   * Grid & Sell
   <!-- * $P_{u, grid}^{j}$ 第 u 個住戶在第 j 個時刻消耗的市電功率 -->
@@ -117,38 +117,42 @@ $$ \min_{\substack{
 }}
 \sum_{j=k}^{T} \rho^{j}P^{j}_{u,grid} T_{s} $$
 
+<!-- HEMS Constraint -->
 * Constraint
-$$ 0 \leq P_{u,grid}^{j} \leq P_{u, grid}^{max} $$
 
-$$ P_{u, discharge}^{max} \leq P_{u,ESS}^{j} \leq P_{u, charge}^{max} $$
+    $$ 0 \leq P_{u,grid}^{j} \leq P_{u, grid}^{max} $$
 
-$$ P_{u,grid}^{j} = \sum_{a \in A_{u, c1} \cup A_{u, c2} \cup A_{u, c3}} P_{u,a}^{j} $$
+    * Balanced Function
+        * $A_{u,uc}$第u個住戶的不可控負載類型
+        * $P_{u,uc}^{j}$第u個住戶在第j個時刻的不可控負載功率
+    
+        $$ P_{u,grid}^{j} = \sum_{a \in A_{u, c1} \cup A_{u, c2} \cup A_{u, c3}} P_{u,a}^{j}  + \sum_{a \in A_{u, uc}} P_{u,uc}^{j}$$
 
-* Loads Constraint
+    * Loads Constraint
 
-$$ P_{u,a}^{j} =
-\left\{ 
-  \begin{array}
-    rr_{u,a}^{j} P_{u,a}^{max}, \qquad &\forall k \in [\tau_{u,a}^{s}, \tau_{u,a}^{e}]\\
-    0 \qquad, \qquad &otherwise
-  \end{array}
-\right.
-$$
+    $$ P_{u,a}^{j} =
+    \left\{ 
+      \begin{array}
+        rr_{u,a}^{j} P_{u,a}^{max}, \qquad &\forall k \in [\tau_{u,a}^{s}, \tau_{u,a}^{e}]\\
+        0 \qquad, \qquad &otherwise
+      \end{array}
+    \right.
+    $$
 
-$$ r_{u,a}^{j} \in \{0,1\}, \qquad \forall j \in [\tau_{u,a}^{s}, \tau_{u,a}^{e}] $$
+    $$ r_{u,a}^{j} \in \{0,1\}, \qquad \forall j \in [\tau_{u,a}^{s}, \tau_{u,a}^{e}] $$
 
-$$ r_{u,a}^{j} = 0, \qquad \forall j \in [0,T-1] \backslash [\tau_{u,a}^{s}, \tau_{u,a}^{e}] $$
+    $$ r_{u,a}^{j} = 0, \qquad \forall j \in [0,T-1] \backslash [\tau_{u,a}^{s}, \tau_{u,a}^{e}] $$
 
-$$ \forall a \in A_{u,c1} $$
+    $$ \forall a \in A_{u,c1} $$
 
-$$ \sum_{k=0}^{T-1} r_{u,a}^{j} \geq Q_{a} $$
+    $$ \sum_{k=0}^{T-1} r_{u,a}^{j} \geq Q_{a} $$
 
-$$ \forall a \in A_{u,c2} \cup A_{u,c3} $$
+    $$ \forall a \in A_{u,c2} \cup A_{u,c3} $$
 
-$$ \sum_{k= \tau_{u,a}^{s}}^{\tau_{u,a}^{e}- \Gamma_{u, a} - 1} \delta_{u,a}^{j} = 1 $$
+    $$ \sum_{k= \tau_{u,a}^{s}}^{\tau_{u,a}^{e}- \Gamma_{u, a} - 1} \delta_{u,a}^{j} = 1 $$
 
-$$ r_{u,a}^{j+n} \geq \delta_{u,a}^{j}, \qquad n = 0,...,\Gamma_a-1 $$
+    $$ r_{u,a}^{j+n} \geq \delta_{u,a}^{j}, \qquad n = 0,...,\Gamma_a-1 $$
 
-$$ \forall a \in A_{u,c3} $$
+    $$ \forall a \in A_{u,c3} $$
 
-$$ \psi_{u, a}^{j+n} \geq \delta_{u,a}^{j} \sigma_{u,a}^{n} $$
+    $$ \psi_{u, a}^{j+n} \geq \delta_{u,a}^{j} \sigma_{u,a}^{n} $$
