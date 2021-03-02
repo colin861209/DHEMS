@@ -31,4 +31,6 @@
    * LHEMS:
       1. Uncontrollable load generate
    * GHEMS:
-      1. I
+      1. Insert variable to table
+
+---
