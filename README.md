@@ -3,9 +3,10 @@
 ###### tags: `DHEMS`
 
 * [Mathematical Formula Link](https://hackmd.io/pvujnbJeQf6bXQqIibQXXQ)
+* Function introduction in `doc` file
 
 ### STEP :
-1. Should modify for loop j in 1 to households' amount in main.sh
+1. Should modify for loop j in 1 to households' amount in `main.sh`
 
 2. LHEMS calculate the `loads deployment` in purpose, and update total loads consumption.
 

@@ -1624,7 +1624,7 @@ void update_loadModel(float *interrupt_p, float *uninterrupt_p, int household_id
 	// =-=-=-=-=-=-=- Caculate for total load model -=-=-=-=-=-=-= //
 	if (household_id == householdTotal)
 	{
-		for (int i = household_id; i <= householdTotal; i++)
+		for (int i = 1; i < householdTotal; i++)
 		{
 			for (int j = sample_time; j < time_block; j++)
 			{
