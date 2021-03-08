@@ -1,3 +1,0 @@
-/home/hems/how/DHEMS/build/CMakeFiles/edit_cache.dir
-/home/hems/how/DHEMS/build/CMakeFiles/rebuild_cache.dir
-/home/hems/how/DHEMS/build/CMakeFiles/GHEMS.dir
