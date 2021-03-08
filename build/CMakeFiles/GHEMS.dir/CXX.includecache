@@ -1,4 +1,4 @@
-#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+#IncludeRegexLine: ^[ 	]*#[ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
 
 #IncludeRegexScan: ^.*$
 
@@ -10,12 +10,6 @@
 string
 -
 vector
--
-
-/home/hems/glpk-4.65-built/src/glpk.h
-stdarg.h
--
-stddef.h
 -
 
 /home/hems/how/DHEMS/src/GHEMS.cpp

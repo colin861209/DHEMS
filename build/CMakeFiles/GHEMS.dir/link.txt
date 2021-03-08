@@ -1,1 +1,1 @@
-/usr/bin/g++-7  -g   CMakeFiles/GHEMS.dir/src/GHEMS.cpp.o CMakeFiles/GHEMS.dir/src/new2D.cpp.o CMakeFiles/GHEMS.dir/src/SQLFunction.cpp.o  -o GHEMS -lmysqlclient /home/hems/glpk-4.65-built/src/.libs/libglpk.a 
+/usr/bin/c++      CMakeFiles/GHEMS.dir/src/GHEMS.cpp.o CMakeFiles/GHEMS.dir/src/new2D.cpp.o CMakeFiles/GHEMS.dir/src/SQLFunction.cpp.o  -o GHEMS -lmysqlclient /usr/local/lib/libglpk.a 
