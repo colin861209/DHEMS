@@ -41,7 +41,5 @@
 
 * rand_operationTime
     * Uncontrollable load generate
-    * Input starting time block 
     * random target 
         1. operation time
-        2. power

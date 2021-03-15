@@ -37,7 +37,7 @@ void putValues_VaryingLoads_OperateTimeAndPower(int **varying_t_d, float **varyi
 void updateTableCost(float *now_grid, float *varying_grid, float *cost, float *FC_cost, float *Hydrogen_com, float *FC_every_cost, float now_power_result, float var_grid_result, float opt_cost_result, float opt_FC_cost_result, float opt_Hydrogen_result, float price_sum_now_power);
 void optimization(vector<string> variable_name, int, int *, int *, int *, int *, float *, int *, int *, int *, int *, float *, int *, int *, int *, int *, int *, int *, int **, float **, int, float *, float *);
 void update_loadModel(float *, float *, int);
-float *rand_operationTime(int);
+float *rand_operationTime();
 
 int main(void)
 {
@@ -45,7 +45,7 @@ int main(void)
 	struct tm now_time = *localtime(&t);
 	int same_day = 0, real_time = 0;
 
-	if ((mysql_real_connect(mysql_con, "140.124.42.70", "root", "fuzzy314", "DHEMS", 6666, NULL, 0)) == NULL)
+	if ((mysql_real_connect(mysql_con, "140.124.42.65", "root", "fuzzy314", "DHEMS", 3306, NULL, 0)) == NULL)
 	{
 		printf("Failed to connect to Mysql!\n");
 		system("pause");
@@ -170,7 +170,7 @@ int main(void)
 
 	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
 
-	float *uncontrollable_load = rand_operationTime(24);
+	float *uncontrollable_load = rand_operationTime();
 	// =-=-=-=-=-=-=- initial total load table -=-=-=-=-=-=-= //
 	if (sample_time == 0 && household_id == 1)
 	{
@@ -1640,8 +1640,9 @@ void update_loadModel(float *interrupt_p, float *uninterrupt_p, int household_id
 	}
 }
 
-float *rand_operationTime(int start_random_time)
+float *rand_operationTime()
 {
+	functionPrint(__func__);
 	float *result = new float[time_block];
 	for (int i = 0; i < time_block; i++)
 		result[i] = 0.0;
@@ -1649,13 +1650,35 @@ float *rand_operationTime(int start_random_time)
 
 	if (sample_time == 0)
 	{
-		for (int i = start_random_time; i < time_block; i++)
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT COUNT(*) FROM `load_list` WHERE group_id = 4");
+		int uncontrollableLoad_num = turn_value_to_int(0);
+		for (int i = 0; i < uncontrollableLoad_num; i++)
 		{
-			int operate_tmp = rand() % 2;
-			float power_tmp = rand() / (RAND_MAX + 1.0);
-			float operate_power = operate_tmp * power_tmp;
-			if (operate_power >= 0.3)
-				result[i] = operate_power;
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT uncontrollable_loads, power1 FROM load_list WHERE group_id = 4 LIMIT %d, %d", i, i + 1);
+			fetch_row_value();
+			char *seo_time = mysql_row[0];
+			float power = atof(mysql_row[1]);
+			char *tmp;
+			tmp = strtok(seo_time, "~");
+			vector<int> time_seperate;
+			while (tmp != NULL)
+			{
+				time_seperate.push_back(atoi(tmp));
+				tmp = strtok(NULL, "~");
+			}
+
+			int operate_count = 0;
+			for (int i = time_seperate[0]; i < time_seperate[1] - 1; i++)
+			{
+				if (operate_count != time_seperate[2])
+				{
+					int operate_tmp = rand() % 2;
+					float operate_power = operate_tmp * power;
+					operate_count += operate_tmp;
+					result[i] += operate_power;
+				}
+			}
+			time_seperate.clear();
 		}
 		for (int i = 0; i < time_block; i++)
 		{

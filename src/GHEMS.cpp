@@ -56,7 +56,7 @@ int main(int argc, const char **argv)
 
 	int *position = new int[16];
 
-	if ((mysql_real_connect(mysql_con, "140.124.42.70", "root", "fuzzy314", "DHEMS", 6666, NULL, 0)) == NULL)
+	if ((mysql_real_connect(mysql_con, "140.124.42.65", "root", "fuzzy314", "DHEMS", 3306, NULL, 0)) == NULL)
 	{
 		printf("Failed to connect to Mysql!\n");
 		system("pause");
