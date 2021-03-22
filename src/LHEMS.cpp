@@ -55,12 +55,17 @@ int main(void)
 	mysql_set_character_set(mysql_con, "utf8");
 
 	// =-=-=-=-=-=-=- get BaseParameter values -=-=-=-=-=-=-= //
-	float *base_par = new float[3];
+	float *base_par = new float[3 + 7];
 	char *s_time = new char[3];
 	for (i = 1; i <= 3; i++)
 	{
 		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_id = '%d'", i);
 		base_par[i - 1] = turn_value_to_float(0);
+	}
+	for (i = 8; i <= 14; i++)
+	{
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_id = '%d'", i);
+		base_par[i - 5] = turn_value_to_float(0);
 	}
 
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'lastTime_execute' ");
@@ -83,13 +88,14 @@ int main(void)
 	time_block = base_par[0];
 	householdTotal = base_par[1];
 	variable = base_par[2];
-	// Vsys = base_par[7];
-	// Cbat = base_par[8];
-	// SOC_min = base_par[9];
-	// SOC_max = base_par[10];
-	// SOC_thres = base_par[11];
-	// Pbat_min = base_par[12];
-	// Pbat_max = base_par[13];
+	Vsys = base_par[3];
+	Cbat = base_par[4];
+	SOC_min = base_par[5];
+	SOC_max = base_par[6];
+	SOC_thres = base_par[7];
+	Pbat_min = base_par[8];
+	Pbat_max = base_par[9];
+
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'Pgridmax' ");
 	Pgrid_max = turn_value_to_float(0);
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'real_time' ");
@@ -117,6 +123,11 @@ int main(void)
 		variable_name.push_back("varying" + to_string(i + 1));
 
 	variable_name.push_back("Pgrid");
+	variable_name.push_back("Pess");
+	variable_name.push_back("Pcharge");
+	variable_name.push_back("Pdischarge");
+	variable_name.push_back("SOC");
+	variable_name.push_back("Z");
 	for (int i = 0; i < uninterrupt_num; i++)
 		variable_name.push_back("uninterDelta" + to_string(i + 1));
 	for (int i = 0; i < varying_num; i++)
@@ -124,6 +135,8 @@ int main(void)
 	for (int i = 0; i < varying_num; i++)
 		variable_name.push_back("varyingPsi" + to_string(i + 1));
 	variable = variable_name.size();
+
+	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `BaseParameter` SET value = %d WHERE `BaseParameter`.`parameter_name` = 'local_variable_num' ", variable_name.size());
 
 	// =-=-=-=-=-=-=- Update loads amount to BaseParameter -=-=-=-=-=-=-= //
 	// it can be ignored
@@ -377,6 +390,16 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 		}
 		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + i * variable), GLP_DB, 0.0, Pgrid_max);
 		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + i * variable), GLP_CV);
+		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pess") + 1 + i * variable), GLP_DB, -Pbat_min, Pbat_max); // Pess
+		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pess") + 1 + i * variable), GLP_CV);
+		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pcharge") + 1 + i * variable), GLP_FR, 0.0, Pbat_max); // Pess +
+		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pcharge") + 1 + i * variable), GLP_CV);
+		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pdischarge") + 1 + i * variable), GLP_FR, 0.0, Pbat_min); // Pess -
+		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pdischarge") + 1 + i * variable), GLP_CV);
+		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "SOC") + 1 + i * variable), GLP_DB, SOC_min, SOC_max); //SOC
+		glp_set_col_kind(mip, (find_variableName_position(variable_name, "SOC") + 1 + i * variable), GLP_CV);
+		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_DB, 0.0, 1.0); //Z
+		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_BV);
 		for (int j = 1; j <= uninterrupt_num; j++)
 		{
 			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "uninterDelta" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
@@ -442,7 +465,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 		glp_set_row_bnds(mip, app_count + i, GLP_UP, 0.0, Pgrid_max);
 	}
 
-	//(Balanced function) Pgrid j = sum(Pa j)
+	//(Balanced function) Pgrid j + Pess j = sum(Pa j)
 	for (h = 0; h < interrupt_num; h++)
 	{
 		if ((interrupt_end[h] - sample_time) >= 0)
@@ -507,11 +530,81 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
 		coefficient[(time_block - sample_time) + app_count + i][i * variable + find_variableName_position(variable_name, "Pgrid")] = -1.0;
+		coefficient[(time_block - sample_time) + app_count + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
 	}
 	for (i = 1; i <= (time_block - sample_time); i++)
 	{
 		glp_set_row_name(mip, ((time_block - sample_time) + app_count + i), "");
 		glp_set_row_bnds(mip, ((time_block - sample_time) + app_count + i), GLP_FX, -uncontrollable_load[i - 1 + sample_time], -uncontrollable_load[i - 1 + sample_time]);
+	}
+
+	// SOC j - 1 + sum((Pess * Ts) / (Cess * Vess)) >= SOC threshold, only one constranit formula
+	for (i = 0; i < (time_block - sample_time); i++)
+	{
+		coefficient[(time_block - sample_time) * 2 + app_count][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
+	}
+	glp_set_row_name(mip, ((time_block - sample_time) * 2 + app_count + 1), "");
+	if (sample_time == 0)
+	{
+		glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1), GLP_LO, ((SOC_thres - SOC_ini) * Cbat * Vsys) / delta_T, 0.0);
+	}
+	else
+	{
+		// avoid the row max is bigger than SOC max
+		glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1), GLP_DB, ((SOC_thres - SOC_ini) * Cbat * Vsys) / delta_T, ((0.89 - SOC_ini) * Cbat * Vsys) / delta_T);
+	}
+
+	// next SOC
+	// SOC j = SOC j - 1 + (Pess j * Ts) / (Cess * Vess)
+	for (i = 0; i < (time_block - sample_time); i++)
+	{
+		for (j = 0; j <= i; j++)
+		{
+			coefficient[(time_block - sample_time) * 2 + app_count + 1 + i][j * variable + find_variableName_position(variable_name, "Pess")] = -1.0; // Pess
+		}
+		coefficient[(time_block - sample_time) * 2 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "SOC")] = Cbat * Vsys / delta_T; //SOC
+	}
+	for (i = 1; i <= (time_block - sample_time); i++)
+	{
+		glp_set_row_name(mip, ((time_block - sample_time) * 2 + app_count + 1 + i), "");
+		glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1 + i), GLP_FX, (SOC_ini * Cbat * Vsys / delta_T), (SOC_ini * Cbat * Vsys / delta_T));
+	}
+
+	//(Charge limit) Pess + <= z * Pcharge max
+	for (i = 0; i < (time_block - sample_time); i++)
+	{
+		coefficient[(time_block - sample_time) * 3 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = 1.0; //Pess +
+		coefficient[(time_block - sample_time) * 3 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Z")] = -Pbat_max; //Z
+	}
+	for (i = 1; i <= (time_block - sample_time); i++)
+	{
+		glp_set_row_name(mip, ((time_block - sample_time) * 3 + app_count + 1 + i), "");
+		glp_set_row_bnds(mip, ((time_block - sample_time) * 3 + app_count + 1 + i), GLP_UP, 0.0, 0.0);
+	}
+
+	// (Discharge limit) Pess - <= (1 - z) * (-Pdischarge max)
+	for (i = 0; i < (time_block - sample_time); i++)
+	{
+		coefficient[(time_block - sample_time) * 4 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0; //Pess -
+		coefficient[(time_block - sample_time) * 4 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Z")] = Pbat_min;	   //Z
+	}
+	for (i = 1; i <= (time_block - sample_time); i++)
+	{
+		glp_set_row_name(mip, ((time_block - sample_time) * 4 + app_count + 1 + i), "");
+		glp_set_row_bnds(mip, ((time_block - sample_time) * 4 + app_count + 1 + i), GLP_UP, 0.0, Pbat_min);
+	}
+
+	// (Battery power) Pdischarge max <= Pess j <= Pcharge max
+	for (i = 0; i < (time_block - sample_time); i++)
+	{
+		coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;	   //Pess
+		coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = -1.0;   //Pess +
+		coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0; //Pess -
+	}
+	for (i = 1; i <= (time_block - sample_time); i++)
+	{
+		glp_set_row_name(mip, ((time_block - sample_time) * 5 + app_count + 1 + i), "");
+		glp_set_row_bnds(mip, ((time_block - sample_time) * 5 + app_count + 1 + i), GLP_FX, 0.0, 0.0);
 	}
 
 	//(Uninterrupted load of auxiliary variables), sum = 1
@@ -527,14 +620,14 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 				{
 					for (i = (uninterrupt_start[h] - sample_time); i <= ((uninterrupt_end[h] - uninterrupt_reot[h] + 1) - sample_time); i++)
 					{
-						coefficient[(time_block - sample_time) * 3 + app_count + counter][i * variable + find_variableName_position(variable_name, "uninterDelta" + to_string(h + 1))] = 1.0;
+						coefficient[(time_block - sample_time) * 6 + app_count + 1 + counter][i * variable + find_variableName_position(variable_name, "uninterDelta" + to_string(h + 1))] = 1.0;
 					}
 				}
 				else if ((uninterrupt_start[h] - sample_time) < 0)
 				{
 					for (i = 0; i <= ((uninterrupt_end[h] - uninterrupt_reot[h] + 1) - sample_time); i++)
 					{
-						coefficient[(time_block - sample_time) * 3 + app_count + counter][i * variable + find_variableName_position(variable_name, "uninterDelta" + to_string(h + 1))] = 1.0;
+						coefficient[(time_block - sample_time) * 6 + app_count + 1 + counter][i * variable + find_variableName_position(variable_name, "uninterDelta" + to_string(h + 1))] = 1.0;
 					}
 				}
 			}
@@ -553,14 +646,14 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 				{
 					for (i = (varying_start[h] - sample_time); i <= ((varying_end[h] - varying_reot[h] + 1) - sample_time); i++)
 					{
-						coefficient[(time_block - sample_time) * 3 + app_count + counter][i * variable + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = 1.0;
+						coefficient[(time_block - sample_time) * 6 + app_count + 1 + counter][i * variable + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = 1.0;
 					}
 				}
 				else if ((varying_start[h] - sample_time) < 0)
 				{
 					for (i = 0; i <= ((varying_end[h] - varying_reot[h] + 1) - sample_time); i++)
 					{
-						coefficient[(time_block - sample_time) * 3 + app_count + counter][i * variable + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = 1.0;
+						coefficient[(time_block - sample_time) * 6 + app_count + 1 + counter][i * variable + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = 1.0;
 					}
 				}
 			}
@@ -574,7 +667,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	{
 		if (uninterrupt_flag[h] == 0)
 		{
-			for (k = (3 + n), m = 0; k < (3 + n) + uninterrupt_reot[h], m < uninterrupt_reot[h]; k++, m++)
+			for (k = (6 + n), m = 0; k < (6 + n) + uninterrupt_reot[h], m < uninterrupt_reot[h]; k++, m++)
 			{
 				if ((uninterrupt_end[h] - sample_time) >= 0)
 				{
@@ -582,16 +675,16 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 					{
 						for (i = (uninterrupt_start[h] - sample_time); i <= ((uninterrupt_end[h] - uninterrupt_reot[h] + 1) - sample_time); i++)
 						{
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][(i + m) * variable + find_variableName_position(variable_name, "uninterrupt" + to_string(h + 1))] = 1.0;
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][i * variable + find_variableName_position(variable_name, "uninterDelta" + to_string(h + 1))] = -1.0;
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][(i + m) * variable + find_variableName_position(variable_name, "uninterrupt" + to_string(h + 1))] = 1.0;
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][i * variable + find_variableName_position(variable_name, "uninterDelta" + to_string(h + 1))] = -1.0;
 						}
 					}
 					else if ((uninterrupt_start[h] - sample_time) < 0)
 					{
 						for (i = 0; i <= ((uninterrupt_end[h] - uninterrupt_reot[h] + 1) - sample_time); i++)
 						{
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][(i + m) * variable + find_variableName_position(variable_name, "uninterrupt" + to_string(h + 1))] = 1.0;
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][i * variable + find_variableName_position(variable_name, "uninterDelta" + to_string(h + 1))] = -1.0;
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][(i + m) * variable + find_variableName_position(variable_name, "uninterrupt" + to_string(h + 1))] = 1.0;
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][i * variable + find_variableName_position(variable_name, "uninterDelta" + to_string(h + 1))] = -1.0;
 						}
 					}
 				}
@@ -606,7 +699,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 				{
 					for (i = 0; i <= (uninterrupt_end[h] - sample_time); i++)
 					{
-						coefficient[(time_block - sample_time) * (3 + n) + app_count + counter + i][i * variable + find_variableName_position(variable_name, "uninterrupt" + to_string(h + 1))] = 1.0;
+						coefficient[(time_block - sample_time) * (6 + n) + app_count + 1 + counter + i][i * variable + find_variableName_position(variable_name, "uninterrupt" + to_string(h + 1))] = 1.0;
 					}
 				}
 				n += 1;
@@ -618,7 +711,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	{
 		if (varying_flag[h] == 0) //?b??�X??t????��?�X???
 		{
-			for (k = (3 + n), m = 0; k < (3 + n) + varying_reot[h], m < varying_reot[h]; k++, m++)
+			for (k = (6 + n), m = 0; k < (6 + n) + varying_reot[h], m < varying_reot[h]; k++, m++)
 			{
 				if ((varying_end[h] - sample_time) >= 0)
 				{
@@ -626,16 +719,16 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 					{
 						for (i = (varying_start[h] - sample_time); i <= ((varying_end[h] - varying_reot[h] + 1) - sample_time); i++)
 						{
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][(i + m) * variable + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = 1.0;
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][i * variable + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = -1.0;
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][(i + m) * variable + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = 1.0;
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][i * variable + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = -1.0;
 						}
 					}
 					else if ((varying_start[h] - sample_time) < 0)
 					{
 						for (i = 0; i <= ((varying_end[h] - varying_reot[h] + 1) - sample_time); i++)
 						{
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][(i + m) * variable + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = 1.0;
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][i * variable + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = -1.0;
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][(i + m) * variable + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = 1.0;
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][i * variable + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = -1.0;
 						}
 					}
 				}
@@ -650,7 +743,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 				{
 					for (i = 0; i <= (varying_end[h] - sample_time); i++)
 					{
-						coefficient[(time_block - sample_time) * (3 + n) + app_count + counter + i][i * variable + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = 1.0;
+						coefficient[(time_block - sample_time) * (6 + n) + app_count + 1 + counter + i][i * variable + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = 1.0;
 					}
 				}
 				n += 1;
@@ -663,7 +756,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	{
 		if (varying_flag[h] == 0)
 		{
-			for (k = (3 + n), m = 0; k < (3 + n) + varying_reot[h], m < varying_reot[h]; k++, m++)
+			for (k = (6 + n), m = 0; k < (6 + n) + varying_reot[h], m < varying_reot[h]; k++, m++)
 			{
 				if ((varying_end[h] - sample_time) >= 0)
 				{
@@ -671,16 +764,16 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 					{
 						for (i = (varying_start[h] - sample_time); i <= ((varying_end[h] - varying_reot[h] + 1) - sample_time); i++)
 						{
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][(i * variable) + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = -1.0 * (((float)varying_t_d[h][i]) * (varying_p_d[h][m]));
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][((i + m) * variable) + find_variableName_position(variable_name, "varyingPsi" + to_string(h + 1))] = 1.0; // ψa j+n
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][(i * variable) + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = -1.0 * (((float)varying_t_d[h][i]) * (varying_p_d[h][m]));
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][((i + m) * variable) + find_variableName_position(variable_name, "varyingPsi" + to_string(h + 1))] = 1.0; // ψa j+n
 						}
 					}
 					else if ((varying_start[h] - sample_time) < 0)
 					{
 						for (i = 0; i <= ((varying_end[h] - varying_reot[h] + 1) - sample_time); i++)
 						{
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][(i * variable) + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = -1.0 * (((float)varying_t_d[h][i]) * (varying_p_d[h][m]));
-							coefficient[(time_block - sample_time) * k + app_count + counter + i][((i + m) * variable) + find_variableName_position(variable_name, "varyingPsi" + to_string(h + 1))] = 1.0; // ψa j+n
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][(i * variable) + find_variableName_position(variable_name, "varyingDelta" + to_string(h + 1))] = -1.0 * (((float)varying_t_d[h][i]) * (varying_p_d[h][m]));
+							coefficient[(time_block - sample_time) * k + app_count + 1 + counter + i][((i + m) * variable) + find_variableName_position(variable_name, "varyingPsi" + to_string(h + 1))] = 1.0; // ψa j+n
 						}
 					}
 				}
@@ -696,16 +789,16 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 				{
 					for (i = (varying_start[h] - sample_time); i <= (varying_end[h] - sample_time); i++)
 					{
-						coefficient[(time_block - sample_time) * (3 + n) + app_count + counter + i][(i * variable) + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = -1.0 * ((float)(varying_t_d[h][i]) * (varying_p_d[h][i + buff[h + interrupt_num + uninterrupt_num]]));
-						coefficient[(time_block - sample_time) * (3 + n) + app_count + counter + i][(i * variable) + find_variableName_position(variable_name, "varyingPsi" + to_string(h + 1))] = 1.0; // ψa j+n
+						coefficient[(time_block - sample_time) * (6 + n) + app_count + 1 + counter + i][(i * variable) + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = -1.0 * ((float)(varying_t_d[h][i]) * (varying_p_d[h][i + buff[h + interrupt_num + uninterrupt_num]]));
+						coefficient[(time_block - sample_time) * (6 + n) + app_count + 1 + counter + i][(i * variable) + find_variableName_position(variable_name, "varyingPsi" + to_string(h + 1))] = 1.0; // ψa j+n
 					}
 				}
 				else if ((varying_start[h] - sample_time) < 0)
 				{
 					for (i = 0; i <= (varying_end[h] - sample_time); i++)
 					{
-						coefficient[(time_block - sample_time) * (3 + n) + app_count + counter + i][(i * variable) + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = -1.0 * ((float)(varying_t_d[h][i]) * (varying_p_d[h][i + buff[h + interrupt_num + uninterrupt_num]]));
-						coefficient[(time_block - sample_time) * (3 + n) + app_count + counter + i][(i * variable) + find_variableName_position(variable_name, "varyingPsi" + to_string(h + 1))] = 1.0; // ψa j+n
+						coefficient[(time_block - sample_time) * (6 + n) + app_count + 1 + counter + i][(i * variable) + find_variableName_position(variable_name, "varying" + to_string(h + 1))] = -1.0 * ((float)(varying_t_d[h][i]) * (varying_p_d[h][i + buff[h + interrupt_num + uninterrupt_num]]));
+						coefficient[(time_block - sample_time) * (6 + n) + app_count + 1 + counter + i][(i * variable) + find_variableName_position(variable_name, "varyingPsi" + to_string(h + 1))] = 1.0; // ψa j+n
 					}
 				}
 			}
@@ -718,8 +811,8 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	{
 		if (uninterrupt_flag[h] == 0)
 		{
-			glp_set_row_name(mip, ((time_block - sample_time) * 3 + app_count + counter), "");
-			glp_set_row_bnds(mip, ((time_block - sample_time) * 3 + app_count + counter), GLP_FX, 1.0, 1.0);
+			glp_set_row_name(mip, ((time_block - sample_time) * 6 + app_count + 1 + counter), "");
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 6 + app_count + 1 + counter), GLP_FX, 1.0, 1.0);
 
 			counter += 1;
 		}
@@ -729,8 +822,8 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	{
 		if (varying_flag[h] == 0)
 		{
-			glp_set_row_name(mip, ((time_block - sample_time) * 3 + app_count + counter), "");
-			glp_set_row_bnds(mip, ((time_block - sample_time) * 3 + app_count + counter), GLP_FX, 1.0, 1.0);
+			glp_set_row_name(mip, ((time_block - sample_time) * 6 + app_count + 1 + counter), "");
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 6 + app_count + 1 + counter), GLP_FX, 1.0, 1.0);
 
 			counter += 1;
 		}
@@ -741,9 +834,9 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	{
 		if (uninterrupt_flag[h] == 0)
 		{
-			for (k = (3 + n); k < (3 + n) + uninterrupt_reot[h]; k++)
+			for (k = (6 + n); k < (6 + n) + uninterrupt_reot[h]; k++)
 			{
-				for (i = ((time_block - sample_time) * k + app_count + counter); i < ((time_block - sample_time) * (k + 1) + app_count + counter); i++)
+				for (i = ((time_block - sample_time) * k + app_count + 1 + counter); i < ((time_block - sample_time) * (k + 1) + app_count + 1 + counter); i++)
 				{
 					glp_set_row_name(mip, i, "");
 					glp_set_row_bnds(mip, i, GLP_LO, 0.0, 0.0);
@@ -755,12 +848,12 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 		{
 			if ((uninterrupt_end[h] - sample_time) >= 0)
 			{
-				for (i = ((time_block - sample_time) * (3 + n) + app_count + counter); i < ((time_block - sample_time) * (3 + n) + app_count + counter + uninterrupt_reot[h]); i++)
+				for (i = ((time_block - sample_time) * (6 + n) + app_count + 1 + counter); i < ((time_block - sample_time) * (6 + n) + app_count + 1 + counter + uninterrupt_reot[h]); i++)
 				{
 					glp_set_row_name(mip, i, "");
 					glp_set_row_bnds(mip, i, GLP_LO, 1.0, 1.0);
 				}
-				for (i = ((time_block - sample_time) * (3 + n) + app_count + counter + uninterrupt_reot[h]); i < ((time_block - sample_time) * ((3 + n) + 1) + app_count + counter); i++)
+				for (i = ((time_block - sample_time) * (6 + n) + app_count + 1 + counter + uninterrupt_reot[h]); i < ((time_block - sample_time) * ((6 + n) + 1) + app_count + 1 + counter); i++)
 				{
 					glp_set_row_name(mip, i, "");
 					glp_set_row_bnds(mip, i, GLP_LO, 0.0, 0.0);
@@ -775,9 +868,9 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 		if (varying_flag[h] == 0)
 		{
 
-			for (k = (3 + n); k < (3 + n) + varying_reot[h]; k++)
+			for (k = (6 + n); k < (6 + n) + varying_reot[h]; k++)
 			{
-				for (i = ((time_block - sample_time) * k + app_count + counter); i < ((time_block - sample_time) * (k + 1) + app_count + counter); i++)
+				for (i = ((time_block - sample_time) * k + app_count + 1 + counter); i < ((time_block - sample_time) * (k + 1) + app_count + 1 + counter); i++)
 				{
 					glp_set_row_name(mip, i, "");
 					glp_set_row_bnds(mip, i, GLP_LO, 0.0, 0.0);
@@ -787,12 +880,12 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 		}
 		if (varying_flag[h] == 1)
 		{
-			for (i = ((time_block - sample_time) * (3 + n) + app_count + counter); i < (((time_block - sample_time) * (3 + n) + app_count + counter) + varying_reot[h]); i++)
+			for (i = ((time_block - sample_time) * (6 + n) + app_count + 1 + counter); i < (((time_block - sample_time) * (6 + n) + app_count + 1 + counter) + varying_reot[h]); i++)
 			{
 				glp_set_row_name(mip, i, "");
 				glp_set_row_bnds(mip, i, GLP_LO, 1.0, 1.0);
 			}
-			for (i = (((time_block - sample_time) * (3 + n) + app_count + counter) + varying_reot[h]); i < ((time_block - sample_time) * ((3 + n) + 1) + app_count + counter); i++)
+			for (i = (((time_block - sample_time) * (6 + n) + app_count + 1 + counter) + varying_reot[h]); i < ((time_block - sample_time) * ((6 + n) + 1) + app_count + 1 + counter); i++)
 			{
 				glp_set_row_name(mip, i, "");
 				glp_set_row_bnds(mip, i, GLP_LO, 0.0, 0.0);
@@ -806,9 +899,9 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	{
 		if (varying_flag[h] == 0)
 		{
-			for (k = (3 + n); k < (3 + n) + varying_reot[h]; k++)
+			for (k = (6 + n); k < (6 + n) + varying_reot[h]; k++)
 			{
-				for (i = ((time_block - sample_time) * k + app_count + counter); i < ((time_block - sample_time) * (k + 1) + app_count + counter); i++)
+				for (i = ((time_block - sample_time) * k + app_count + 1 + counter); i < ((time_block - sample_time) * (k + 1) + app_count + 1 + counter); i++)
 				{
 					glp_set_row_name(mip, i, "");
 					glp_set_row_bnds(mip, i, GLP_LO, 0.0, 0.0);
@@ -818,7 +911,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 		}
 		if (varying_flag[h] == 1)
 		{
-			for (i = ((time_block - sample_time) * (3 + n) + app_count + counter); i < ((time_block - sample_time) * ((3 + n) + 1) + app_count + counter); i++)
+			for (i = ((time_block - sample_time) * (6 + n) + app_count + 1 + counter); i < ((time_block - sample_time) * ((6 + n) + 1) + app_count + 1 + counter); i++)
 			{
 				glp_set_row_name(mip, i, "");
 				glp_set_row_bnds(mip, i, GLP_LO, 0.0, 0.0);
@@ -884,7 +977,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	printf("\n");
 	printf("LINE %d: timeblock %d household id %d sol = %f; \n", __LINE__, sample_time, household_id, z);
 
-	if (z == 0.0)
+	if (z == 0.0 && glp_mip_col_val(mip, find_variableName_position(variable_name, "SOC") + 1) == 0.0)
 	{
 		printf("Error > sol is 0, No Solution, give up the solution\n");
 		printf("%.2f\n", glp_mip_col_val(mip, find_variableName_position(variable_name, "Pgrid") + 1));
@@ -1038,9 +1131,9 @@ int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector
 		}
 
 		// get previous SOC value
-		// snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM LHEMS_control_status WHERE control_id = %d ", sample_time - 1, find_variableName_position(variable_name, "SOC") + 1);
-		// SOC_ini = turn_value_to_float(0);
-		// messagePrint(__LINE__, "SOC = ", 'F', SOC_ini, 'Y');
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM LHEMS_control_status WHERE equip_name = '%s' and household_id = %d", sample_time - 1, "SOC", household_id);
+		SOC_ini = turn_value_to_float(0);
+		messagePrint(__LINE__, "SOC = ", 'F', SOC_ini, 'Y');
 
 		// snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `BaseParameter` SET `value` = '%f'  WHERE parameter_name = 'now_SOC' ", SOC_ini);
 		// sent_query();
@@ -1050,8 +1143,8 @@ int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector
 		// if (SOC_ini > 90)
 		// 	SOC_ini = 89.8;
 
-		// messagePrint(__LINE__, "NOW REAL SOC = ", 'F', SOC_ini, 'Y');
-		// messagePrint(__LINE__, "Should same as previous SOC or 89.8 (if previous SOC > 90)", 'S', 0, 'Y');
+		messagePrint(__LINE__, "NOW REAL SOC = ", 'F', SOC_ini, 'Y');
+		messagePrint(__LINE__, "Should same as previous SOC or 89.8 (if previous SOC > 90)", 'S', 0, 'Y');
 	}
 	else
 	{
@@ -1068,13 +1161,13 @@ int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector
 		// snprintf(sql_buffer, sizeof(sql_buffer), "TRUNCATE TABLE cost");
 		// sent_query();
 
-		// if (real_time == 0)
-		// {
-		// 	// don't consider yesterday last time slot SOC
-		// 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'ini_SOC'"); //get ini_SOC
-		// 	SOC_ini = turn_value_to_float(0);
-		// 	messagePrint(__LINE__, "ini_SOC : ", 'F', SOC_ini, 'Y');
-		// }
+		if (real_time == 0)
+		{
+			// don't consider yesterday last time slot SOC
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'ini_SOC'"); //get ini_SOC
+			SOC_ini = turn_value_to_float(0);
+			messagePrint(__LINE__, "ini_SOC : ", 'F', SOC_ini, 'Y');
+		}
 		// else
 		// {
 		// 	// consider the day before yesterday SOC

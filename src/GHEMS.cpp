@@ -67,6 +67,10 @@ int main(int argc, const char **argv)
 		messagePrint(__LINE__, "Connect to Mysql sucess!!");
 		mysql_set_character_set(mysql_con, "utf8");
 	}
+	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%.3f' WHERE parameter_name = 'hydrogen_price' ", Hydro_Price);
+	sent_query();
+	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%s' WHERE parameter_name = 'simulate_weather' ", weather.c_str());
+	sent_query();
 
 	// =-=-=-=-=-=-=- get parameter values from BaseParameter in need -=-=-=-=-=-=-= //
 	vector<float> parameter_tmp;
@@ -165,7 +169,7 @@ int main(int argc, const char **argv)
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'Global_next_simulate_timeblock' ");
 	sample_time = turn_value_to_float(0);
 	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
-	
+
 	if (sample_time == 0)
 		insert_GHEMS_variable();
 
