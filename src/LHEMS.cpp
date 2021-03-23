@@ -136,7 +136,7 @@ int main(void)
 		variable_name.push_back("varyingPsi" + to_string(i + 1));
 	variable = variable_name.size();
 
-	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `BaseParameter` SET value = %d WHERE `BaseParameter`.`parameter_name` = 'local_variable_num' ", variable_name.size());
+	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `BaseParameter` SET value = %d WHERE `BaseParameter`.`parameter_name` = 'local_variable_num' ", (int)variable_name.size());
 
 	// =-=-=-=-=-=-=- Update loads amount to BaseParameter -=-=-=-=-=-=-= //
 	// it can be ignored
@@ -183,7 +183,8 @@ int main(void)
 
 	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
 
-	float *uncontrollable_load = rand_operationTime();
+	// float *uncontrollable_load = rand_operationTime();
+	float uncontrollable_load[time_block] = {0.0};
 	// =-=-=-=-=-=-=- initial total load table -=-=-=-=-=-=-= //
 	if (sample_time == 0 && household_id == 1)
 	{
