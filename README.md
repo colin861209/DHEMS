@@ -35,3 +35,19 @@
       1. Insert variable to table
 
 ---
+## 2021/03/30
+
++ Commit link [8c84b57](https://github.com/colin861209/DHEMS/commit/8c84b5726aa7aab361bf1744c760aa54ba3717a0)
+
+* Content:
+   * SQLFunction:
+      1. ADD function 'demand response info'
+	* GHEMS:
+      1. DR info
+      2. constraint
+      3. Pgrid_max_array
+	* LHEMS:
+	   1. DR info
+	   2. household's weighting
+
+---
