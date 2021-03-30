@@ -15,19 +15,22 @@ MYSQL *mysql_con = mysql_init(NULL);
 MYSQL_RES *mysql_result;
 MYSQL_ROW mysql_row;
 char sql_buffer[2000] = {'\0'};
+int row_totalNum, col_totalNum;
 
 void fetch_row_value() {
 
 	sent_query();
 	mysql_result = mysql_store_result(mysql_con);
 	mysql_row = mysql_fetch_row(mysql_result);
+	row_totalNum = mysql_num_rows(mysql_result);
+	col_totalNum = mysql_num_fields(mysql_result);
 	mysql_free_result(mysql_result);
 	memset(sql_buffer, 0, sizeof(sql_buffer));
 }
 
 void sent_query() { mysql_query(mysql_con, sql_buffer); }
 
-int turn_int(int col_num) { return atoi(mysql_row[col_num]); }
+int turn_int(int col_num) {	return atoi(mysql_row[col_num]); }
 
 float turn_float(int col_num) { return atof(mysql_row[col_num]); }
 
@@ -62,7 +65,6 @@ void messagePrint(int lineNum, const char *message, char contentSize, float cont
 	default:
 		printf("LINE %d: %s\n", lineNum, message);
 	}
-	
 }
 
 void functionPrint(const char* functionName) {
@@ -79,4 +81,24 @@ int find_variableName_position(vector<string> variableNameArray, string target)
 		return (it - variableNameArray.begin());
 	else
 		return -1;
+}
+
+int *demand_response_info()
+{
+	functionPrint(__func__);
+
+	int *result = new int[5];
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT * FROM `demand_response` WHERE mode = %d", dr_mode);
+	fetch_row_value();
+	for (int i = 0; i < 5; i++)
+	{
+		result[i] = turn_int(i + 1);
+	}
+
+	messagePrint(__LINE__, "dr start time: ", 'I', result[0], 'Y');
+	messagePrint(__LINE__, "dr end time: ", 'I', result[1], 'Y');
+	messagePrint(__LINE__, "dr min decrease power: ", 'I', result[2], 'Y');
+	messagePrint(__LINE__, "dr min feedback price: ", 'I', result[3], 'Y');
+	messagePrint(__LINE__, "dr customer base line: ", 'I', result[4], 'Y');
+	return result;
 }
