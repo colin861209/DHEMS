@@ -15,37 +15,64 @@ MYSQL *mysql_con = mysql_init(NULL);
 MYSQL_RES *mysql_result;
 MYSQL_ROW mysql_row;
 char sql_buffer[2000] = {'\0'};
-int row_totalNum, col_totalNum;
+int row_totalNum, col_totalNum, error;
 
-void fetch_row_value() {
+int fetch_row_value() {
 
 	sent_query();
 	mysql_result = mysql_store_result(mysql_con);
-	mysql_row = mysql_fetch_row(mysql_result);
-	row_totalNum = mysql_num_rows(mysql_result);
-	col_totalNum = mysql_num_fields(mysql_result);
+	if ((mysql_row = mysql_fetch_row(mysql_result)) != NULL) {
+
+		row_totalNum = mysql_num_rows(mysql_result);
+		col_totalNum = mysql_num_fields(mysql_result);
+		error = 0;
+	}
+	else
+		error = -1;
+
 	mysql_free_result(mysql_result);
 	memset(sql_buffer, 0, sizeof(sql_buffer));
+	return error;
 }
 
 void sent_query() { mysql_query(mysql_con, sql_buffer); }
 
-int turn_int(int col_num) {	return atoi(mysql_row[col_num]); }
+int turn_int(int col_num) {	
 
-float turn_float(int col_num) { return atof(mysql_row[col_num]); }
+	if (mysql_row[col_num] != NULL)
+		return atoi(mysql_row[col_num]); 
+	else
+		return -999;		
+}
+
+float turn_float(int col_num) { 
+	
+	if (mysql_row[col_num] != NULL)
+		return atof(mysql_row[col_num]); 
+	else
+		return -999;
+}
 
 float turn_value_to_float(int col_num) {
 	
-	fetch_row_value();
-	float result = turn_float(col_num);
-	return result;
+	if (fetch_row_value() != -1) {
+
+		float result = turn_float(col_num);
+		return result;
+	}
+	else
+		return -404;
 }
 
 int turn_value_to_int(int col_num) {
 
-	fetch_row_value();
-	int result = turn_int(col_num);
-	return result;
+	if (fetch_row_value() != -1) {
+		
+		int result = turn_int(col_num);
+		return result;
+	}
+	else
+		return -404;
 }
 
 void messagePrint(int lineNum, const char *message, char contentSize, float content, char tabInHeader) {

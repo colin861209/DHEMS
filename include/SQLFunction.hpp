@@ -13,7 +13,7 @@ extern char sql_buffer[2000];
 extern vector<string> variable_name;
 extern int dr_mode, dr_startTime, dr_endTime, dr_minDecrease_power, dr_feedback_price, dr_customer_baseLine;
 
-void fetch_row_value();
+int fetch_row_value();
 void sent_query();
 int turn_int(int col_num);
 float turn_float(int col_num);
