@@ -29,12 +29,12 @@ double z = 0;
 vector<string> variable_name;
 // common parameter
 int time_block = 0, variable = 0, divide = 0, sample_time = 0, point_num = 0, piecewise_num;
-
+int dr_mode, dr_startTime, dr_endTime, dr_minDecrease_power, dr_feedback_price, dr_customer_baseLine;
 float delta_T = 0.0;
 float Cbat = 0.0, Vsys = 0.0, SOC_ini = 0.0, SOC_min = 0.0, SOC_max = 0.0, SOC_thres = 0.0, Pbat_min = 0.0, Pbat_max = 0.0, Pgrid_max = 0.0, Psell_max = 0.0, Delta_battery = 0.0, Pfc_max = 0.0;
 string weather;
 float step1_bill = 0.0, step1_sell = 0.0, step1_PESS = 0.0;
-
+vector<float> Pgrid_max_array;
 char column[400] = "A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21,A22,A23,A24,A25,A26,A27,A28,A29,A30,A31,A32,A33,A34,A35,A36,A37,A38,A39,A40,A41,A42,A43,A44,A45,A46,A47,A48,A49,A50,A51,A52,A53,A54,A55,A56,A57,A58,A59,A60,A61,A62,A63,A64,A65,A66,A67,A68,A69,A70,A71,A72,A73,A74,A75,A76,A77,A78,A79,A80,A81,A82,A83,A84,A85,A86,A87,A88,A89,A90,A91,A92,A93,A94,A95";
 int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector<string> variable_name);
 void updateBaseParameter_from_1To(int length, vector<float>);
@@ -71,7 +71,7 @@ int main(int argc, const char **argv)
 	sent_query();
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%s' WHERE parameter_name = 'simulate_weather' ", weather.c_str());
 	sent_query();
-
+	
 	// =-=-=-=-=-=-=- get parameter values from BaseParameter in need -=-=-=-=-=-=-= //
 	vector<float> parameter_tmp;
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'time_block' ");
@@ -85,6 +85,20 @@ int main(int argc, const char **argv)
 	}
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'Global_real_time' ");
 	parameter_tmp.push_back(turn_value_to_float(0));
+
+	// =-=-=-=-=-=-=- get demand response -=-=-=-=-=-=-= //
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM `BaseParameter` WHERE `parameter_name` = 'dr_mode' ");
+	dr_mode = turn_value_to_int(0);
+	messagePrint(__LINE__, "dr mode: ", 'I', dr_mode);
+	if (dr_mode != 0)
+	{
+		int *dr_info = demand_response_info();
+		dr_startTime = dr_info[0];
+		dr_endTime = dr_info[1];
+		dr_minDecrease_power = dr_info[2];
+		dr_feedback_price = dr_info[3];
+		dr_customer_baseLine = dr_info[4];
+	}
 
 	// =-=-=-=-=-=-=- we suppose that enerage appliance in community should same as the single appliance times household amount -=-=-=-=-=-=-= //
 	time_block = parameter_tmp[0];
@@ -114,6 +128,7 @@ int main(int argc, const char **argv)
 	variable_name.push_back("Pdischarge");
 	variable_name.push_back("SOC");
 	variable_name.push_back("Z");
+	variable_name.push_back("dr_alpha");
 	// variable_name.push_back("Pfc");
 	// variable_name.push_back("Pfct");
 	// variable_name.push_back("PfcON");
@@ -172,6 +187,24 @@ int main(int argc, const char **argv)
 
 	if (sample_time == 0)
 		insert_GHEMS_variable();
+
+	// =-=-=-=-=-=-=- get total weighting from dr_alpha -=-=-=-=-=-=-= //
+	if (dr_mode != 0)
+	{
+		for (int i = 0; i < time_block - sample_time; i++)
+		{
+			if (dr_startTime - sample_time >= 0 && dr_endTime - sample_time < 0)
+			{
+				snprintf(sql_buffer, sizeof(sql_buffer), "SELECT SUM(A%d) FROM `demand_response_alpha` WHERE `dr_timeblock` = %d", sample_time, i + sample_time);
+				float dr_weighting_sumOfAlpha = turn_value_to_float(0) / parameter_tmp[1];
+				Pgrid_max_array.push_back(Pgrid_max * dr_weighting_sumOfAlpha);
+			}
+			else
+			{
+				Pgrid_max_array.push_back(Pgrid_max);
+			}
+		}
+	}
 
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%d-%02d-%02d' WHERE parameter_name = 'lastTime_execute' ", now_time.tm_year + 1900, now_time.tm_mon + 1, now_time.tm_mday);
 	sent_query();
@@ -266,6 +299,8 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 		glp_set_col_kind(mip, (find_variableName_position(variable_name, "SOC") + 1 + i * variable), GLP_CV);
 		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_DB, 0.0, 1.0); //Z
 		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_BV);
+		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "dr_alpha") + 1 + i * variable), GLP_DB, 0.0, 1.0);
+		glp_set_col_kind(mip, (find_variableName_position(variable_name, "dr_alpha") + 1 + i * variable), GLP_CV);
 		// glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pfc") + 1 + i * variable), GLP_DB, -0.00001, Pfc_max); //Pfc
 		// glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pfc") + 1 + i * variable), GLP_CV);
 		// glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pfct") + 1 + i * variable), GLP_LO, 0.0, 0.0); //Total_Pfc
@@ -301,7 +336,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
 		coefficient[i][i * variable + find_variableName_position(variable_name, "Pgrid")] = 1.0;
-		coefficient[i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max;
+		coefficient[i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max_array[i];
 	}
 	for (i = 1; i <= (time_block - sample_time); i++)
 	{
@@ -428,6 +463,39 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 		glp_set_row_bnds(mip, ((time_block - sample_time) * 7 + 1 + i), GLP_FX, 0.0, 0.0);
 	}
 
+	// dr constraint
+	if (dr_mode != 0)
+	{
+		float dr_sumOfCBL = 0.0;
+		if (dr_startTime - sample_time >= 0)
+		{
+			for (i = (dr_startTime - sample_time); i < (dr_endTime - sample_time); i++)
+			{
+				coefficient[(time_block - sample_time) * 8 + 1][i * variable + find_variableName_position(variable_name, "Pgrid")] = -1.0 * delta_T;
+				dr_sumOfCBL += dr_customer_baseLine * delta_T;
+			}
+		}
+		else
+		{
+			for (i = 0; i < (dr_endTime - sample_time); i++)
+			{
+				coefficient[(time_block - sample_time) * 8 + 1][i * variable + find_variableName_position(variable_name, "Pgrid")] = -1.0 * delta_T;
+			}
+			for (i = dr_startTime; i < sample_time; i++)
+			{
+				snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM `GHEMS_control_status` WHERE equip_name = 'Pgrid'", i);
+				float previous_grid_power = turn_value_to_float(0);
+				dr_sumOfCBL += (dr_customer_baseLine - previous_grid_power) * delta_T;
+			}
+			for (i = sample_time; i < dr_endTime; i++)
+			{
+				dr_sumOfCBL += dr_customer_baseLine * delta_T;
+			}
+		}
+		glp_set_row_name(mip, ((time_block - sample_time) * 8 + 1), "");
+		glp_set_row_bnds(mip, ((time_block - sample_time) * 8 + 1), GLP_LO, dr_minDecrease_power - dr_sumOfCBL, 0.0);
+	}
+
 	// =-=-=-=-=-=-=- FC part -=-=-=-=-=-=-=
 	//fc constraint
 	//pfc=pfc_on+pfc_off
@@ -550,6 +618,23 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + j * variable), price2[j + sample_time] * delta_T);
 		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Psell") + 1 + j * variable), price2[j + sample_time] * delta_T * (-1));
 		// glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pfct") + 1 + j * variable), Hydro_Price / Hydro_Cons * delta_T); //FC cost
+	}
+	if (dr_mode != 0)
+	{
+		if (sample_time - dr_startTime >= 0)
+		{
+			for (j = 0; j < dr_endTime - sample_time; j++)
+			{
+				glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + j * variable), dr_feedback_price * delta_T);
+			}
+		}
+		else if (sample_time - dr_startTime < 0)
+		{
+			for (j = dr_startTime - sample_time; j < dr_endTime - sample_time; j++)
+			{
+				glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + j * variable), dr_feedback_price * delta_T);
+			}
+		}
 	}
 
 	int *ia = new int[rowTotal * colTotal + 1];
