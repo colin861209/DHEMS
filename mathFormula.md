@@ -139,11 +139,9 @@ $$
   
     $$ 0 \leq \alpha_{u}^{j} \leq 1 $$
 
-    $$ \omega_{u}^{j} = \sum_{u=1}^{U} P_{u, grid}^{j} $$
+    $$ \omega_{u}^{j} = \frac{P_{u, grid}^{j}}{\sum_{u=1}^{U} P_{u, grid}^{j}}  $$
 
-    $$ \omega_{total}^{j} = \sum_{u=1}^{U} P_{u, grid}^{j} $$
-
-    $$ 0 \leq \alpha_{u}^{j} \leq \frac{P_{u,grid}^{max}-\frac{\omega_{u}^{j}}{\omega_{total}^{j}}*E_{s}}{P_{u,grid}^{max}}, \qquad \forall j \in [\epsilon_{it}^{s}, \epsilon_{it}^{e}] $$
+    $$ 0 \leq \alpha_{u}^{j} \leq \frac{P_{u,grid}^{max}-\omega_{u}^{j}*E_{s}}{P_{u,grid}^{max}}, \qquad \forall j \in [\epsilon_{it}^{s}, \epsilon_{it}^{e}] $$
     
     $$ \alpha_{u}^{j} = 1, \qquad  \forall j \in [0, N-1] \backslash  [\epsilon_{it}^{s}, \epsilon_{it}^{e}] $$
 
