@@ -40,15 +40,15 @@ int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector
 void updateBaseParameter_from_1To(int length, vector<float>);
 void print_BaseParameter_SystemState(int real_time, int same_day);
 void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2);
-void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption, float *real_sell_price, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_priceSum, float totalLoad_taipowerPriceSum);
+void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption, float *real_sell_price, float *demandResponse_feedback, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_priceSum, float totalLoad_taipowerPriceSum, float demandResponse_feedbackSum);
 void optimization(vector<string> variable_name, float *load_model, float *price2);
 void calculateCostInfo(float *price2);
 void insert_GHEMS_variable();
 
 int main(int argc, const char **argv)
 {
-	Hydro_Price = stof(argv[1]);
-	weather = argv[2];
+	// Hydro_Price = stof(argv[1]);
+	// weather = argv[2];
 
 	time_t t = time(NULL);
 	struct tm now_time = *localtime(&t);
@@ -67,11 +67,12 @@ int main(int argc, const char **argv)
 		messagePrint(__LINE__, "Connect to Mysql sucess!!");
 		mysql_set_character_set(mysql_con, "utf8");
 	}
-	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%.3f' WHERE parameter_name = 'hydrogen_price' ", Hydro_Price);
-	sent_query();
-	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%s' WHERE parameter_name = 'simulate_weather' ", weather.c_str());
-	sent_query();
-	
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'hydrogen_price' ");
+	Hydro_Price = turn_value_to_float(0);
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'simulate_weather' ");
+	if (fetch_row_value() != -1)
+		weather = mysql_row[0];
+
 	// =-=-=-=-=-=-=- get parameter values from BaseParameter in need -=-=-=-=-=-=-= //
 	vector<float> parameter_tmp;
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'time_block' ");
@@ -210,7 +211,7 @@ int main(int argc, const char **argv)
 	sent_query();
 
 	optimization(variable_name, load_model, price2);
-	// calculateCostInfo(price2);
+	calculateCostInfo(price2);
 
 	printf("LINE %d: sample_time = %d\n", __LINE__, sample_time);
 	printf("LINE %d: next sample_time = %d\n\n", __LINE__, sample_time + 1);
@@ -336,7 +337,10 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
 		coefficient[i][i * variable + find_variableName_position(variable_name, "Pgrid")] = 1.0;
-		coefficient[i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max_array[i];
+		if (dr_mode != 0)
+			coefficient[i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max_array[i];
+		else
+			coefficient[i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max;
 	}
 	for (i = 1; i <= (time_block - sample_time); i++)
 	{
@@ -885,7 +889,7 @@ void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2)
 	}
 }
 
-void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption, float *real_sell_pirce, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_pirceSum, float totalLoad_taipowerPriceSum)
+void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption,  float *real_sell_pirce,float *demandResponse_feedback, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_pirceSum, float totalLoad_taipowerPriceSum, float demandResponse_feedbackSum)
 {
 	functionPrint(__func__);
 
@@ -920,6 +924,11 @@ void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_
 		sent_query();
 		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %f WHERE parameter_name = 'hydrogenConsumption(g)' ", Hydrogen_g_consumptionSum);
 		sent_query();
+
+		snprintf(sql_buffer, sizeof(sql_buffer), "INSERT INTO cost (cost_name, %s) VALUES('%s','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f');", column, "demand_response_feedback", demandResponse_feedback[0], demandResponse_feedback[1], demandResponse_feedback[2], demandResponse_feedback[3], demandResponse_feedback[4], demandResponse_feedback[5], demandResponse_feedback[6], demandResponse_feedback[7], demandResponse_feedback[8], demandResponse_feedback[9], demandResponse_feedback[10], demandResponse_feedback[11], demandResponse_feedback[12], demandResponse_feedback[13], demandResponse_feedback[14], demandResponse_feedback[15], demandResponse_feedback[16], demandResponse_feedback[17], demandResponse_feedback[18], demandResponse_feedback[19], demandResponse_feedback[20], demandResponse_feedback[21], demandResponse_feedback[22], demandResponse_feedback[23], demandResponse_feedback[24], demandResponse_feedback[25], demandResponse_feedback[26], demandResponse_feedback[27], demandResponse_feedback[28], demandResponse_feedback[29], demandResponse_feedback[30], demandResponse_feedback[31], demandResponse_feedback[32], demandResponse_feedback[33], demandResponse_feedback[34], demandResponse_feedback[35], demandResponse_feedback[36], demandResponse_feedback[37], demandResponse_feedback[38], demandResponse_feedback[39], demandResponse_feedback[40], demandResponse_feedback[41], demandResponse_feedback[42], demandResponse_feedback[43], demandResponse_feedback[44], demandResponse_feedback[45], demandResponse_feedback[46], demandResponse_feedback[47], demandResponse_feedback[48], demandResponse_feedback[49], demandResponse_feedback[50], demandResponse_feedback[51], demandResponse_feedback[52], demandResponse_feedback[53], demandResponse_feedback[54], demandResponse_feedback[55], demandResponse_feedback[56], demandResponse_feedback[57], demandResponse_feedback[58], demandResponse_feedback[59], demandResponse_feedback[60], demandResponse_feedback[61], demandResponse_feedback[62], demandResponse_feedback[63], demandResponse_feedback[64], demandResponse_feedback[65], demandResponse_feedback[66], demandResponse_feedback[67], demandResponse_feedback[68], demandResponse_feedback[69], demandResponse_feedback[70], demandResponse_feedback[71], demandResponse_feedback[72], demandResponse_feedback[73], demandResponse_feedback[74], demandResponse_feedback[75], demandResponse_feedback[76], demandResponse_feedback[77], demandResponse_feedback[78], demandResponse_feedback[79], demandResponse_feedback[80], demandResponse_feedback[81], demandResponse_feedback[82], demandResponse_feedback[83], demandResponse_feedback[84], demandResponse_feedback[85], demandResponse_feedback[86], demandResponse_feedback[87], demandResponse_feedback[88], demandResponse_feedback[89], demandResponse_feedback[90], demandResponse_feedback[91], demandResponse_feedback[92], demandResponse_feedback[93], demandResponse_feedback[94], demandResponse_feedback[95]);
+		sent_query();
+		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %f WHERE parameter_name = 'demandResponse_feedbackPrice' ", demandResponse_feedbackSum);
+		sent_query();
 	}
 	else
 	{
@@ -952,6 +961,11 @@ void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_
 		sent_query();
 		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %f WHERE parameter_name = 'hydrogenConsumption(g)' ", Hydrogen_g_consumptionSum);
 		sent_query();
+
+		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE cost set A0 = '%.3f', A1 = '%.3f', A2 = '%.3f', A3 = '%.3f', A4 = '%.3f', A5 = '%.3f', A6 = '%.3f', A7 = '%.3f', A8 = '%.3f', A9 = '%.3f', A10 = '%.3f', A11 = '%.3f', A12 = '%.3f', A13 = '%.3f', A14 = '%.3f', A15 = '%.3f', A16 = '%.3f', A17 = '%.3f', A18 = '%.3f', A19 = '%.3f', A20 = '%.3f', A21 = '%.3f', A22 = '%.3f', A23 = '%.3f', A24 = '%.3f', A25 = '%.3f', A26 = '%.3f', A27 = '%.3f', A28 = '%.3f', A29 = '%.3f', A30 = '%.3f', A31 = '%.3f', A32 = '%.3f', A33 = '%.3f', A34 = '%.3f', A35 = '%.3f', A36 = '%.3f', A37 = '%.3f', A38 = '%.3f', A39 = '%.3f', A40 = '%.3f', A41 = '%.3f', A42 = '%.3f', A43 = '%.3f', A44 = '%.3f', A45 = '%.3f', A46 = '%.3f', A47 = '%.3f', A48 = '%.3f', A49 = '%.3f', A50 = '%.3f', A51 = '%.3f', A52 = '%.3f', A53 = '%.3f', A54 = '%.3f', A55 = '%.3f', A56 = '%.3f', A57 = '%.3f', A58 = '%.3f', A59 = '%.3f', A60 = '%.3f', A61 = '%.3f', A62 = '%.3f', A63 = '%.3f', A64 = '%.3f', A65 = '%.3f', A66 = '%.3f', A67 = '%.3f', A68 = '%.3f', A69 = '%.3f', A70 = '%.3f', A71 = '%.3f', A72 = '%.3f', A73 = '%.3f', A74 = '%.3f', A75 = '%.3f', A76 = '%.3f', A77 = '%.3f', A78 = '%.3f', A79 = '%.3f', A80 = '%.3f', A81 = '%.3f', A82 = '%.3f', A83 = '%.3f', A84 = '%.3f', A85 = '%.3f', A86 = '%.3f', A87 = '%.3f', A88 = '%.3f', A89 = '%.3f', A90 = '%.3f', A91 = '%.3f', A92 = '%.3f', A93 = '%.3f', A94 = '%.3f', A95 = '%.3f', `datetime` = CURRENT_TIMESTAMP WHERE cost_name = '%s';", demandResponse_feedback[0], demandResponse_feedback[1], demandResponse_feedback[2], demandResponse_feedback[3], demandResponse_feedback[4], demandResponse_feedback[5], demandResponse_feedback[6], demandResponse_feedback[7], demandResponse_feedback[8], demandResponse_feedback[9], demandResponse_feedback[10], demandResponse_feedback[11], demandResponse_feedback[12], demandResponse_feedback[13], demandResponse_feedback[14], demandResponse_feedback[15], demandResponse_feedback[16], demandResponse_feedback[17], demandResponse_feedback[18], demandResponse_feedback[19], demandResponse_feedback[20], demandResponse_feedback[21], demandResponse_feedback[22], demandResponse_feedback[23], demandResponse_feedback[24], demandResponse_feedback[25], demandResponse_feedback[26], demandResponse_feedback[27], demandResponse_feedback[28], demandResponse_feedback[29], demandResponse_feedback[30], demandResponse_feedback[31], demandResponse_feedback[32], demandResponse_feedback[33], demandResponse_feedback[34], demandResponse_feedback[35], demandResponse_feedback[36], demandResponse_feedback[37], demandResponse_feedback[38], demandResponse_feedback[39], demandResponse_feedback[40], demandResponse_feedback[41], demandResponse_feedback[42], demandResponse_feedback[43], demandResponse_feedback[44], demandResponse_feedback[45], demandResponse_feedback[46], demandResponse_feedback[47], demandResponse_feedback[48], demandResponse_feedback[49], demandResponse_feedback[50], demandResponse_feedback[51], demandResponse_feedback[52], demandResponse_feedback[53], demandResponse_feedback[54], demandResponse_feedback[55], demandResponse_feedback[56], demandResponse_feedback[57], demandResponse_feedback[58], demandResponse_feedback[59], demandResponse_feedback[60], demandResponse_feedback[61], demandResponse_feedback[62], demandResponse_feedback[63], demandResponse_feedback[64], demandResponse_feedback[65], demandResponse_feedback[66], demandResponse_feedback[67], demandResponse_feedback[68], demandResponse_feedback[69], demandResponse_feedback[70], demandResponse_feedback[71], demandResponse_feedback[72], demandResponse_feedback[73], demandResponse_feedback[74], demandResponse_feedback[75], demandResponse_feedback[76], demandResponse_feedback[77], demandResponse_feedback[78], demandResponse_feedback[79], demandResponse_feedback[80], demandResponse_feedback[81], demandResponse_feedback[82], demandResponse_feedback[83], demandResponse_feedback[84], demandResponse_feedback[85], demandResponse_feedback[86], demandResponse_feedback[87], demandResponse_feedback[88], demandResponse_feedback[89], demandResponse_feedback[90], demandResponse_feedback[91], demandResponse_feedback[92], demandResponse_feedback[93], demandResponse_feedback[94], demandResponse_feedback[95], "demand_response_feedback");
+		sent_query();
+		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %f WHERE parameter_name = 'demandResponse_feedbackPrice' ", demandResponse_feedbackSum);
+		sent_query();
 	}
 
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %f WHERE parameter_name = 'LoadSpend(taipowerPrice)' ", totalLoad_taipowerPriceSum);
@@ -961,9 +975,10 @@ void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_
 	messagePrint(__LINE__, "total loads power cost by taipower(NTD): ", 'F', totalLoad_taipowerPriceSum, 'Y');
 	messagePrint(__LINE__, "total loads power cost by three level electric price(NTD): ", 'F', totalLoad_priceSum, 'Y');
 	messagePrint(__LINE__, "buy total grid(NTD): ", 'F', real_grid_pirceSum, 'Y');
-	// messagePrint(__LINE__, "Grid_sell(NTD):  ", 'F', opt_sell_result, 'Y');
+	messagePrint(__LINE__, "sell total grid(NTD):  ", 'F', real_sell_pirceSum, 'Y');
 	messagePrint(__LINE__, "fuelCell cost(NTD): ", 'F', fuelCell_kW_priceSum, 'Y');
 	messagePrint(__LINE__, "hydrogen comsumotion(g): ", 'F', Hydrogen_g_consumptionSum, 'Y');
+	messagePrint(__LINE__, "demand response feedback price(NTD): ", 'F', demandResponse_feedbackSum, 'Y');
 	// step1_bill = opt_cost_result - opt_sell_result;
 	// step1_sell = opt_sell_result;
 }
@@ -977,33 +992,76 @@ void calculateCostInfo(float *price2)
 	float fuelCell_kW_price[time_block] = {0.0}, Hydrogen_g_consumption[time_block] = {0.0};
 	float fuelCell_kW_priceSum = 0.0, Hydrogen_g_consumptionSum = 0.0;
 	float real_sell_pirce[time_block] = {0.0}, real_sell_pirceSum = 0.0;
+	float demandResponse_feedback[time_block] = {0.0}, demandResponse_feedbackSum = 0.0;
+
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM cost WHERE cost_name = '%s' LIMIT 1", "total_load_power");
+	int totalLoad_flag = turn_value_to_int(0);
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM cost WHERE cost_name = '%s' LIMIT 1", "total_load_price");
+	int totalLoad_price_flag = turn_value_to_int(0);
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM cost WHERE cost_name = '%s' LIMIT 1", "real_buy_grid_price");
+	int real_grid_pirce_flag = turn_value_to_int(0);
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM cost WHERE cost_name = '%s' LIMIT 1", "real_sell_grid_price");
+	int real_sell_pirce_flag = turn_value_to_int(0);
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM cost WHERE cost_name = '%s' LIMIT 1", "FC_price");
+	int fuelCell_kW_price_flag = turn_value_to_int(0);
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM cost WHERE cost_name = '%s' LIMIT 1", "hydrogen_consumption");
+	int Hydrogen_g_consumption_flag = turn_value_to_int(0);
 
 	for (int i = 0; i < sample_time; i++)
 	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "total_load_power");
-		totalLoad[i] = turn_value_to_float(0);
-		totalLoad_sum += totalLoad[i];
-
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "total_load_price");
-		totalLoad_price[i] = turn_value_to_float(0);
-		totalLoad_priceSum += totalLoad_price[i];
-
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "real_buy_grid_price");
-		real_grid_pirce[i] = turn_value_to_float(0);
-		real_grid_pirceSum += real_grid_pirce[i];
-
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "real_sell_grid_price");
-		real_sell_pirce[i] = turn_value_to_float(0);
-		real_sell_pirceSum += real_sell_pirce[i];
-
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "FC_price");
-		fuelCell_kW_price[i] = turn_value_to_float(0);
-		fuelCell_kW_priceSum += fuelCell_kW_price[i];
-
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "hydrogen_consumption");
-		Hydrogen_g_consumption[i] = turn_value_to_float(0);
-		Hydrogen_g_consumptionSum += Hydrogen_g_consumption[i];
+		if (totalLoad_flag != -404 && totalLoad_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "total_load_power");
+			totalLoad[i] = turn_value_to_float(0);
+			totalLoad_sum += totalLoad[i];
+		}
+		if (totalLoad_price_flag != -404 && totalLoad_price_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "total_load_price");
+			totalLoad_price[i] = turn_value_to_float(0);
+			totalLoad_priceSum += totalLoad_price[i];
+		}
+		if (real_grid_pirce_flag != -404 && real_grid_pirce_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "real_buy_grid_price");
+			float grid_tmp = turn_value_to_float(0);
+			real_grid_pirce[i] = grid_tmp;
+			real_grid_pirceSum += real_grid_pirce[i];
+			if (dr_mode != 0)
+			{
+				if (i >= dr_startTime && i < dr_endTime)
+				{
+					demandResponse_feedback[i] = dr_feedback_price * (dr_customer_baseLine - grid_tmp) * delta_T;
+					demandResponse_feedbackSum += demandResponse_feedback[i];
+				}
+			}
+		}
+		if (real_sell_pirce_flag != -404 && real_sell_pirce_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "real_sell_grid_price");
+			real_sell_pirce[i] = turn_value_to_float(0);
+			real_sell_pirceSum += real_sell_pirce[i];
+		}
+		if (fuelCell_kW_price_flag != -404 && fuelCell_kW_price_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "FC_price");
+			fuelCell_kW_price[i] = turn_value_to_float(0);
+			fuelCell_kW_priceSum += fuelCell_kW_price[i];
+		}
+		if (Hydrogen_g_consumption_flag != -404 && Hydrogen_g_consumption_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM cost WHERE cost_name = '%s'", i, "hydrogen_consumption");
+			Hydrogen_g_consumption[i] = turn_value_to_float(0);
+			Hydrogen_g_consumptionSum += Hydrogen_g_consumption[i];
+		}
 	}
+
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM GHEMS_control_status WHERE equip_name = '%s' LIMIT 1", "Pgrid");
+	int Pgrid_flag = turn_value_to_int(0);
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM GHEMS_control_status WHERE equip_name = '%s' LIMIT 1", "Psell");
+	int Psell_flag = turn_value_to_int(0);
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT control_id FROM GHEMS_control_status WHERE equip_name = '%s' LIMIT 1", "Pfct");
+	int Pfct_flag = turn_value_to_int(0);
 
 	for (int i = sample_time; i < time_block; i++)
 	{
@@ -1015,22 +1073,40 @@ void calculateCostInfo(float *price2)
 		totalLoad_priceSum += totalLoad_price[i];
 
 		// =-=-=-=-=-=-=- calcalte optimize Pgrid consumption spend how much money -=-=-=-=-=-=-= //
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM GHEMS_control_status WHERE equip_name = '%s' ", i, "Pgrid");
-		real_grid_pirce[i] = turn_value_to_float(0) * price2[i] * delta_T;
-		real_grid_pirceSum += real_grid_pirce[i];
+		if (Pgrid_flag != -404 && Pgrid_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM GHEMS_control_status WHERE equip_name = '%s' ", i, "Pgrid");
+			float grid_tmp = turn_value_to_float(0);
+			real_grid_pirce[i] = grid_tmp * price2[i] * delta_T;
+			real_grid_pirceSum += real_grid_pirce[i];
+			if (dr_mode != 0)
+			{
+				if (i >= dr_startTime && i < dr_endTime)
+				{
+					demandResponse_feedback[i] = (dr_customer_baseLine - grid_tmp) * delta_T;
+					demandResponse_feedbackSum += demandResponse_feedback[i];
+				}
+			}
+		}
 
 		// =-=-=-=-=-=-=- calcalte optimize Psell consumption save how much money -=-=-=-=-=-=-= //
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM GHEMS_control_status WHERE equip_name = '%s' ", i, "Psell");
-		real_sell_pirce[i] = turn_value_to_float(0) * price2[i] * delta_T;
-		real_sell_pirceSum += real_sell_pirce[i];
+		if (Psell_flag != -404 && Psell_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM GHEMS_control_status WHERE equip_name = '%s' ", i, "Psell");
+			real_sell_pirce[i] = turn_value_to_float(0) * price2[i] * delta_T;
+			real_sell_pirceSum += real_sell_pirce[i];
+		}
 
 		// =-=-=-=-=-=-=- calcalte optimize Pfct consumption how much money & how many grams hydrogen -=-=-=-=-=-=-= //
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM GHEMS_control_status WHERE equip_name = '%s' ", i, "Pfct");
-		float fuelCell_tmp = turn_value_to_float(0);
-		fuelCell_kW_price[i] = fuelCell_tmp * Hydro_Price / Hydro_Cons * delta_T;
-		fuelCell_kW_priceSum += fuelCell_kW_price[i];
-		Hydrogen_g_consumption[i] = fuelCell_tmp / Hydro_Cons * delta_T;
-		Hydrogen_g_consumptionSum += Hydrogen_g_consumption[i];
+		if (Pfct_flag != -404 && Pfct_flag != -999)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM GHEMS_control_status WHERE equip_name = '%s' ", i, "Pfct");
+			float fuelCell_tmp = turn_value_to_float(0);
+			fuelCell_kW_price[i] = fuelCell_tmp * Hydro_Price / Hydro_Cons * delta_T;
+			fuelCell_kW_priceSum += fuelCell_kW_price[i];
+			Hydrogen_g_consumption[i] = fuelCell_tmp / Hydro_Cons * delta_T;
+			Hydrogen_g_consumptionSum += Hydrogen_g_consumption[i];
+		}
 	}
 
 	//NOW taipower cost reference --> https://www.taipower.com.tw/upload/238/2018070210412196443.pdf
@@ -1052,7 +1128,7 @@ void calculateCostInfo(float *price2)
 	else if (totalLoad_sum > (1000.0 / 30.0))
 		totalLoad_taipowerPriceSum = (120.0 * P_1 + (330.0 - 120.0) * P_2 + (500.0 - 330.0) * P_3 + (700.0 - 500.0) * P_4 + (1000.0 - 700.0) * P_5 + (totalLoad_sum * 30.0 - 1000.0) * P_6) / 30.0;
 
-	updateTableCost(totalLoad, totalLoad_price, real_grid_pirce, fuelCell_kW_price, Hydrogen_g_consumption, real_sell_pirce, totalLoad_sum, totalLoad_priceSum, real_grid_pirceSum, fuelCell_kW_priceSum, Hydrogen_g_consumptionSum, real_sell_pirceSum, totalLoad_taipowerPriceSum);
+	updateTableCost(totalLoad, totalLoad_price, real_grid_pirce, fuelCell_kW_price, Hydrogen_g_consumption, real_sell_pirce, demandResponse_feedback, totalLoad_sum, totalLoad_priceSum, real_grid_pirceSum, fuelCell_kW_priceSum, Hydrogen_g_consumptionSum, real_sell_pirceSum, totalLoad_taipowerPriceSum, demandResponse_feedbackSum);
 }
 
 void insert_GHEMS_variable()
