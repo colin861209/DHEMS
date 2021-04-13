@@ -129,7 +129,6 @@ int main(int argc, const char **argv)
 	variable_name.push_back("Pdischarge");
 	variable_name.push_back("SOC");
 	variable_name.push_back("Z");
-	variable_name.push_back("dr_alpha");
 	// variable_name.push_back("Pfc");
 	// variable_name.push_back("Pfct");
 	// variable_name.push_back("PfcON");
@@ -300,8 +299,6 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 		glp_set_col_kind(mip, (find_variableName_position(variable_name, "SOC") + 1 + i * variable), GLP_CV);
 		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_DB, 0.0, 1.0); //Z
 		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_BV);
-		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "dr_alpha") + 1 + i * variable), GLP_DB, 0.0, 1.0);
-		glp_set_col_kind(mip, (find_variableName_position(variable_name, "dr_alpha") + 1 + i * variable), GLP_CV);
 		// glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pfc") + 1 + i * variable), GLP_DB, -0.00001, Pfc_max); //Pfc
 		// glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pfc") + 1 + i * variable), GLP_CV);
 		// glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pfct") + 1 + i * variable), GLP_LO, 0.0, 0.0); //Total_Pfc
