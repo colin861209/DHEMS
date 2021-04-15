@@ -1,11 +1,6 @@
 #!/bin/bash
-weather="cloudy"  
-weatherString="Weather ${weather}" 
-Hydro_Price="0.08"
-Hydro_PriceString="FC Price ${Hydro_Price}" 
 truncate -s 0 ~/how/DHEMS/log/*.log
-echo "=-=-=-=-=-=-=-=-=- ${weatherString} -=-=-=-=-=-=-=-=-="
-echo "=-=-=-=-=-=-=-=-=- ${Hydro_PriceString} -=-=-=-=-=-=-=-=-="
+echo "#### RUN dr2 & LHEMS grid + ess & GHEMS no fc ####"
 for i in {1..96}
 do
    for j in {1..5}

@@ -18,6 +18,7 @@ double z = 0;
 vector<string> variable_name;
 // base parameter
 int time_block = 0, variable = 0, divide = 0, sample_time = 0, householdTotal = 0, interrupt_num, uninterrupt_num, varying_num, app_count, household_id;
+int Pgrid_flag, Pess_flag, Pfc_flag, interruptLoad_flag, uninterruptLoad_flag, varyingLoad_flag;
 int dr_mode, dr_startTime, dr_endTime, dr_minDecrease_power, dr_feedback_price, dr_customer_baseLine;
 float delta_T = 0.0;
 float Cbat = 0.0, Vsys = 0.0, SOC_ini = 0.0, SOC_min = 0.0, SOC_max = 0.0, SOC_thres = 0.0, Pbat_min = 0.0, Pbat_max = 0.0, Pgrid_max = 0.0, Psell_max;
@@ -60,15 +61,10 @@ int main(void)
 	float *base_par = new float[3 + 7];
 	char *s_time = new char[3];
 	for (i = 1; i <= 3; i++)
-	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_id = '%d'", i);
-		base_par[i - 1] = turn_value_to_float(0);
-	}
+		base_par[i - 1] = value_receive("BaseParameter", "parameter_id", i);
+
 	for (i = 8; i <= 14; i++)
-	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_id = '%d'", i);
-		base_par[i - 5] = turn_value_to_float(0);
-	}
+		base_par[i - 5] = value_receive("BaseParameter", "parameter_id", i, 'F');
 
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'lastTime_execute' ");
 	fetch_row_value();
@@ -97,28 +93,24 @@ int main(void)
 	SOC_thres = base_par[7];
 	Pbat_min = base_par[8];
 	Pbat_max = base_par[9];
-
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'Pgridmax' ");
-	Pgrid_max = turn_value_to_float(0);
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'real_time' ");
-	real_time = turn_value_to_int(0);
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'household_id' ");
-	household_id = turn_value_to_int(0);
 	divide = (time_block / 24);
 	delta_T = 1.0 / (float)divide;
 
+	Pgrid_max = value_receive("BaseParameter", "parameter_name", "Pgridmax", 'F');
+	real_time = value_receive("BaseParameter", "parameter_name", "real_time");
+	household_id = value_receive("BaseParameter", "parameter_name", "household_id");
+
 	// =-=-=-=-=-=-=- get load_list loads category's amount -=-=-=-=-=-=-= //
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT count(*) AS numcols FROM load_list WHERE group_id=1 ");
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT COUNT(*) FROM load_list WHERE group_id = 1");
 	interrupt_num = turn_value_to_int(0);
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT count(*) AS numcols FROM load_list WHERE group_id=2 ");
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT COUNT(*) FROM load_list WHERE group_id = 2");
 	uninterrupt_num = turn_value_to_int(0);
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT count(*) AS numcols FROM load_list WHERE group_id=3 ");
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT COUNT(*) FROM load_list WHERE group_id = 3");
 	varying_num = turn_value_to_int(0);
 	app_count = interrupt_num + uninterrupt_num + varying_num;
 
 	// =-=-=-=-=-=-=- get demand response -=-=-=-=-=-=-= //
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM `BaseParameter` WHERE `parameter_name` = 'dr_mode' ");
-	dr_mode = turn_value_to_int(0);
+	dr_mode = value_receive("BaseParameter", "parameter_name", "dr_mode");
 	messagePrint(__LINE__, "dr mode: ", 'I', dr_mode);
 	if (dr_mode != 0)
 	{
@@ -129,29 +121,52 @@ int main(void)
 		dr_feedback_price = dr_info[3];
 		dr_customer_baseLine = dr_info[4];
 	}
-
+	interruptLoad_flag = flag_receive("LHEMS_flag", "interrupt");
+	uninterruptLoad_flag = flag_receive("LHEMS_flag", "uninterrupt");
+	varyingLoad_flag = flag_receive("LHEMS_flag", "varying");
+	Pgrid_flag = flag_receive("LHEMS_flag", "Pgrid");
+	Pess_flag = flag_receive("LHEMS_flag", "Pess");
 	// =-=-=-=-=-=-=- Define variable name and use in GLPK -=-=-=-=-=-=-= //
 	// Most important thing, helping in GLPK big matrix setting
-	for (int i = 0; i < interrupt_num; i++)
-		variable_name.push_back("interrupt" + to_string(i + 1));
-	for (int i = 0; i < uninterrupt_num; i++)
-		variable_name.push_back("uninterrupt" + to_string(i + 1));
-	for (int i = 0; i < varying_num; i++)
-		variable_name.push_back("varying" + to_string(i + 1));
-
-	variable_name.push_back("Pgrid");
-	variable_name.push_back("Pess");
-	variable_name.push_back("Pcharge");
-	variable_name.push_back("Pdischarge");
-	variable_name.push_back("SOC");
-	variable_name.push_back("Z");
-	variable_name.push_back("dr_alpha");
-	for (int i = 0; i < uninterrupt_num; i++)
-		variable_name.push_back("uninterDelta" + to_string(i + 1));
-	for (int i = 0; i < varying_num; i++)
-		variable_name.push_back("varyingDelta" + to_string(i + 1));
-	for (int i = 0; i < varying_num; i++)
-		variable_name.push_back("varyingPsi" + to_string(i + 1));
+	if (interruptLoad_flag == 1)
+	{
+		for (int i = 0; i < interrupt_num; i++)
+			variable_name.push_back("interrupt" + to_string(i + 1));
+	}
+	if (uninterruptLoad_flag == 1)
+	{
+		for (int i = 0; i < uninterrupt_num; i++)
+			variable_name.push_back("uninterrupt" + to_string(i + 1));
+	}
+	if (varyingLoad_flag == 1)
+	{
+		for (int i = 0; i < varying_num; i++)
+			variable_name.push_back("varying" + to_string(i + 1));
+	}
+	if (Pgrid_flag == 1)
+		variable_name.push_back("Pgrid");
+	if (Pgrid_flag == 1)
+	{
+		variable_name.push_back("Pess");
+		variable_name.push_back("Pcharge");
+		variable_name.push_back("Pdischarge");
+		variable_name.push_back("SOC");
+		variable_name.push_back("Z");
+	}
+	if (dr_mode != 0)
+		variable_name.push_back("dr_alpha");
+	if (uninterruptLoad_flag == 1)
+	{
+		for (int i = 0; i < uninterrupt_num; i++)
+			variable_name.push_back("uninterDelta" + to_string(i + 1));
+	}
+	if (varyingLoad_flag == 1)
+	{
+		for (int i = 0; i < varying_num; i++)
+			variable_name.push_back("varyingDelta" + to_string(i + 1));
+		for (int i = 0; i < varying_num; i++)
+			variable_name.push_back("varyingPsi" + to_string(i + 1));
+	}
 	variable = variable_name.size();
 
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `BaseParameter` SET value = %d WHERE `BaseParameter`.`parameter_name` = 'local_variable_num' ", variable);
@@ -161,8 +176,7 @@ int main(void)
 	// updateBaseParameter_from_1To(16, base_par);
 
 	// =-=-=-=-=-=-=- Get simulation time slot -=-=-=-=-=-=-= //
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'next_simulate_timeblock' ");
-	sample_time = turn_value_to_int(0);
+	sample_time = value_receive("BaseParameter", "parameter_name", "next_simulate_timeblock");
 
 	// print_BaseParameter_SystemState(real_time, same_day);
 
@@ -196,13 +210,10 @@ int main(void)
 	sent_query();
 
 	// =-=-=-=-=-=-=- the time slot which send to GLPK -=-=-=-=-=-=-= //
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'next_simulate_timeblock'");
-	sample_time = turn_value_to_float(0);
-
+	sample_time = value_receive("BaseParameter", "parameter_name", "next_simulate_timeblock");
 	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
 
-	// float *uncontrollable_load = rand_operationTime();
-	float uncontrollable_load[time_block] = {0.0};
+	float *uncontrollable_load = rand_operationTime();
 	// =-=-=-=-=-=-=- initial total load table -=-=-=-=-=-=-= //
 	if (sample_time == 0 && household_id == 1)
 	{
@@ -396,51 +407,73 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	// column setting
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
-		for (int j = 1; j <= interrupt_num; j++)
+		if (interruptLoad_flag == 1)
 		{
-			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "interrupt" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
-			glp_set_col_kind(mip, (find_variableName_position(variable_name, "interrupt" + to_string(j)) + 1 + i * variable), GLP_BV);
+			for (int j = 1; j <= interrupt_num; j++)
+			{
+				glp_set_col_bnds(mip, (find_variableName_position(variable_name, "interrupt" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
+				glp_set_col_kind(mip, (find_variableName_position(variable_name, "interrupt" + to_string(j)) + 1 + i * variable), GLP_BV);
+			}
 		}
-		for (int j = 1; j <= uninterrupt_num; j++)
+		if (uninterruptLoad_flag == 1)
 		{
-			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "uninterrupt" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
-			glp_set_col_kind(mip, (find_variableName_position(variable_name, "uninterrupt" + to_string(j)) + 1 + i * variable), GLP_BV);
+			for (int j = 1; j <= uninterrupt_num; j++)
+			{
+				glp_set_col_bnds(mip, (find_variableName_position(variable_name, "uninterrupt" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
+				glp_set_col_kind(mip, (find_variableName_position(variable_name, "uninterrupt" + to_string(j)) + 1 + i * variable), GLP_BV);
+			}
 		}
-		for (int j = 1; j <= varying_num; j++)
+		if (varyingLoad_flag == 1)
 		{
-			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "varying" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
-			glp_set_col_kind(mip, (find_variableName_position(variable_name, "varying" + to_string(j)) + 1 + i * variable), GLP_BV);
+			for (int j = 1; j <= varying_num; j++)
+			{
+				glp_set_col_bnds(mip, (find_variableName_position(variable_name, "varying" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
+				glp_set_col_kind(mip, (find_variableName_position(variable_name, "varying" + to_string(j)) + 1 + i * variable), GLP_BV);
+			}
 		}
-		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + i * variable), GLP_DB, 0.0, Pgrid_max);
-		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + i * variable), GLP_CV);
-		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pess") + 1 + i * variable), GLP_DB, -Pbat_min, Pbat_max);
-		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pess") + 1 + i * variable), GLP_CV);
-		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pcharge") + 1 + i * variable), GLP_FR, 0.0, Pbat_max);
-		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pcharge") + 1 + i * variable), GLP_CV);
-		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pdischarge") + 1 + i * variable), GLP_FR, 0.0, Pbat_min);
-		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pdischarge") + 1 + i * variable), GLP_CV);
-		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "SOC") + 1 + i * variable), GLP_DB, SOC_min, SOC_max);
-		glp_set_col_kind(mip, (find_variableName_position(variable_name, "SOC") + 1 + i * variable), GLP_CV);
-		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_DB, 0.0, 1.0);
-		glp_set_col_kind(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_BV);
-		glp_set_col_bnds(mip, (find_variableName_position(variable_name, "dr_alpha") + 1 + i * variable), GLP_DB, 0.0, 1.0);
-		glp_set_col_kind(mip, (find_variableName_position(variable_name, "dr_alpha") + 1 + i * variable), GLP_CV);
-		for (int j = 1; j <= uninterrupt_num; j++)
+		if (Pgrid_flag == 1)
 		{
-			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "uninterDelta" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
-			glp_set_col_kind(mip, (find_variableName_position(variable_name, "uninterDelta" + to_string(j)) + 1 + i * variable), GLP_BV);
+			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + i * variable), GLP_DB, 0.0, Pgrid_max);
+			glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + i * variable), GLP_CV);
 		}
-
-		for (int j = 1; j <= varying_num; j++)
+		if (Pess_flag == 1)
 		{
-			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "varyingDelta" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
-			glp_set_col_kind(mip, (find_variableName_position(variable_name, "varyingDelta" + to_string(j)) + 1 + i * variable), GLP_BV);
+			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pess") + 1 + i * variable), GLP_DB, -Pbat_min, Pbat_max);
+			glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pess") + 1 + i * variable), GLP_CV);
+			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pcharge") + 1 + i * variable), GLP_FR, 0.0, Pbat_max);
+			glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pcharge") + 1 + i * variable), GLP_CV);
+			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Pdischarge") + 1 + i * variable), GLP_FR, 0.0, Pbat_min);
+			glp_set_col_kind(mip, (find_variableName_position(variable_name, "Pdischarge") + 1 + i * variable), GLP_CV);
+			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "SOC") + 1 + i * variable), GLP_DB, SOC_min, SOC_max);
+			glp_set_col_kind(mip, (find_variableName_position(variable_name, "SOC") + 1 + i * variable), GLP_CV);
+			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_DB, 0.0, 1.0);
+			glp_set_col_kind(mip, (find_variableName_position(variable_name, "Z") + 1 + i * variable), GLP_BV);
 		}
-
-		for (int j = 1; j <= varying_num; j++)
+		if (dr_mode != 0)
 		{
-			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "varyingPsi" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, varying_p_max[j - 1]);
-			glp_set_col_kind(mip, (find_variableName_position(variable_name, "varyingPsi" + to_string(j)) + 1 + i * variable), GLP_CV);
+			glp_set_col_bnds(mip, (find_variableName_position(variable_name, "dr_alpha") + 1 + i * variable), GLP_DB, 0.0, 1.0);
+			glp_set_col_kind(mip, (find_variableName_position(variable_name, "dr_alpha") + 1 + i * variable), GLP_CV);
+		}
+		if (uninterruptLoad_flag == 1)
+		{
+			for (int j = 1; j <= uninterrupt_num; j++)
+			{
+				glp_set_col_bnds(mip, (find_variableName_position(variable_name, "uninterDelta" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
+				glp_set_col_kind(mip, (find_variableName_position(variable_name, "uninterDelta" + to_string(j)) + 1 + i * variable), GLP_BV);
+			}
+		}
+		if (varyingLoad_flag == 1)
+		{
+			for (int j = 1; j <= varying_num; j++)
+			{
+				glp_set_col_bnds(mip, (find_variableName_position(variable_name, "varyingDelta" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, 1.0);
+				glp_set_col_kind(mip, (find_variableName_position(variable_name, "varyingDelta" + to_string(j)) + 1 + i * variable), GLP_BV);
+			}
+			for (int j = 1; j <= varying_num; j++)
+			{
+				glp_set_col_bnds(mip, (find_variableName_position(variable_name, "varyingPsi" + to_string(j)) + 1 + i * variable), GLP_DB, 0.0, varying_p_max[j - 1]);
+				glp_set_col_kind(mip, (find_variableName_position(variable_name, "varyingPsi" + to_string(j)) + 1 + i * variable), GLP_CV);
+			}
 		}
 	}
 
@@ -613,7 +646,8 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
 		coefficient[(time_block - sample_time) + app_count + i][i * variable + find_variableName_position(variable_name, "Pgrid")] = -1.0;
-		coefficient[(time_block - sample_time) + app_count + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
+		if (Pess_flag == 1)
+			coefficient[(time_block - sample_time) + app_count + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
 	}
 	for (i = 1; i <= (time_block - sample_time); i++)
 	{
@@ -621,73 +655,75 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 		glp_set_row_bnds(mip, ((time_block - sample_time) + app_count + i), GLP_FX, -uncontrollable_load[i - 1 + sample_time], -uncontrollable_load[i - 1 + sample_time]);
 	}
 
-	// SOC j - 1 + sum((Pess * Ts) / (Cess * Vess)) >= SOC threshold, only one constranit formula
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
-		coefficient[(time_block - sample_time) * 2 + app_count][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
-	}
-	glp_set_row_name(mip, ((time_block - sample_time) * 2 + app_count + 1), "");
-	if (sample_time == 0)
-	{
-		glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1), GLP_LO, ((SOC_thres - SOC_ini) * Cbat * Vsys) / delta_T, 0.0);
-	}
-	else
-	{
-		// avoid the row max is bigger than SOC max
-		glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1), GLP_DB, ((SOC_thres - SOC_ini) * Cbat * Vsys) / delta_T, ((0.89 - SOC_ini) * Cbat * Vsys) / delta_T);
-	}
-
-	// next SOC
-	// SOC j = SOC j - 1 + (Pess j * Ts) / (Cess * Vess)
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
-		for (j = 0; j <= i; j++)
+	if (Pess_flag == 1)
+	{ // SOC j - 1 + sum((Pess * Ts) / (Cess * Vess)) >= SOC threshold, only one constranit formula
+		for (i = 0; i < (time_block - sample_time); i++)
 		{
-			coefficient[(time_block - sample_time) * 2 + app_count + 1 + i][j * variable + find_variableName_position(variable_name, "Pess")] = -1.0; // Pess
+			coefficient[(time_block - sample_time) * 2 + app_count][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
 		}
-		coefficient[(time_block - sample_time) * 2 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "SOC")] = Cbat * Vsys / delta_T; //SOC
-	}
-	for (i = 1; i <= (time_block - sample_time); i++)
-	{
-		glp_set_row_name(mip, ((time_block - sample_time) * 2 + app_count + 1 + i), "");
-		glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1 + i), GLP_FX, (SOC_ini * Cbat * Vsys / delta_T), (SOC_ini * Cbat * Vsys / delta_T));
-	}
+		glp_set_row_name(mip, ((time_block - sample_time) * 2 + app_count + 1), "");
+		if (sample_time == 0)
+		{
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1), GLP_LO, ((SOC_thres - SOC_ini) * Cbat * Vsys) / delta_T, 0.0);
+		}
+		else
+		{
+			// avoid the row max is bigger than SOC max
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1), GLP_DB, ((SOC_thres - SOC_ini) * Cbat * Vsys) / delta_T, ((0.89 - SOC_ini) * Cbat * Vsys) / delta_T);
+		}
 
-	//(Charge limit) Pess + <= z * Pcharge max
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
-		coefficient[(time_block - sample_time) * 3 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = 1.0; //Pess +
-		coefficient[(time_block - sample_time) * 3 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Z")] = -Pbat_max; //Z
-	}
-	for (i = 1; i <= (time_block - sample_time); i++)
-	{
-		glp_set_row_name(mip, ((time_block - sample_time) * 3 + app_count + 1 + i), "");
-		glp_set_row_bnds(mip, ((time_block - sample_time) * 3 + app_count + 1 + i), GLP_UP, 0.0, 0.0);
-	}
+		// next SOC
+		// SOC j = SOC j - 1 + (Pess j * Ts) / (Cess * Vess)
+		for (i = 0; i < (time_block - sample_time); i++)
+		{
+			for (j = 0; j <= i; j++)
+			{
+				coefficient[(time_block - sample_time) * 2 + app_count + 1 + i][j * variable + find_variableName_position(variable_name, "Pess")] = -1.0; // Pess
+			}
+			coefficient[(time_block - sample_time) * 2 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "SOC")] = Cbat * Vsys / delta_T; //SOC
+		}
+		for (i = 1; i <= (time_block - sample_time); i++)
+		{
+			glp_set_row_name(mip, ((time_block - sample_time) * 2 + app_count + 1 + i), "");
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 2 + app_count + 1 + i), GLP_FX, (SOC_ini * Cbat * Vsys / delta_T), (SOC_ini * Cbat * Vsys / delta_T));
+		}
 
-	// (Discharge limit) Pess - <= (1 - z) * (-Pdischarge max)
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
-		coefficient[(time_block - sample_time) * 4 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0; //Pess -
-		coefficient[(time_block - sample_time) * 4 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Z")] = Pbat_min;	   //Z
-	}
-	for (i = 1; i <= (time_block - sample_time); i++)
-	{
-		glp_set_row_name(mip, ((time_block - sample_time) * 4 + app_count + 1 + i), "");
-		glp_set_row_bnds(mip, ((time_block - sample_time) * 4 + app_count + 1 + i), GLP_UP, 0.0, Pbat_min);
-	}
+		//(Charge limit) Pess + <= z * Pcharge max
+		for (i = 0; i < (time_block - sample_time); i++)
+		{
+			coefficient[(time_block - sample_time) * 3 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = 1.0; //Pess +
+			coefficient[(time_block - sample_time) * 3 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Z")] = -Pbat_max; //Z
+		}
+		for (i = 1; i <= (time_block - sample_time); i++)
+		{
+			glp_set_row_name(mip, ((time_block - sample_time) * 3 + app_count + 1 + i), "");
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 3 + app_count + 1 + i), GLP_UP, 0.0, 0.0);
+		}
 
-	// (Battery power) Pdischarge max <= Pess j <= Pcharge max
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
-		coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;	   //Pess
-		coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = -1.0;   //Pess +
-		coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0; //Pess -
-	}
-	for (i = 1; i <= (time_block - sample_time); i++)
-	{
-		glp_set_row_name(mip, ((time_block - sample_time) * 5 + app_count + 1 + i), "");
-		glp_set_row_bnds(mip, ((time_block - sample_time) * 5 + app_count + 1 + i), GLP_FX, 0.0, 0.0);
+		// (Discharge limit) Pess - <= (1 - z) * (-Pdischarge max)
+		for (i = 0; i < (time_block - sample_time); i++)
+		{
+			coefficient[(time_block - sample_time) * 4 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0; //Pess -
+			coefficient[(time_block - sample_time) * 4 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Z")] = Pbat_min;	   //Z
+		}
+		for (i = 1; i <= (time_block - sample_time); i++)
+		{
+			glp_set_row_name(mip, ((time_block - sample_time) * 4 + app_count + 1 + i), "");
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 4 + app_count + 1 + i), GLP_UP, 0.0, Pbat_min);
+		}
+
+		// (Battery power) Pdischarge max <= Pess j <= Pcharge max
+		for (i = 0; i < (time_block - sample_time); i++)
+		{
+			coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;	   //Pess
+			coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = -1.0;   //Pess +
+			coefficient[(time_block - sample_time) * 5 + app_count + 1 + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0; //Pess -
+		}
+		for (i = 1; i <= (time_block - sample_time); i++)
+		{
+			glp_set_row_name(mip, ((time_block - sample_time) * 5 + app_count + 1 + i), "");
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 5 + app_count + 1 + i), GLP_FX, 0.0, 0.0);
+		}
 	}
 
 	//(Uninterrupted load of auxiliary variables), sum = 1
@@ -1840,8 +1876,21 @@ float *rand_operationTime()
 	float *result = new float[time_block];
 	for (int i = 0; i < time_block; i++)
 		result[i] = 0.0;
-	srand(time(NULL));
 
+	int uncontrollable_load_flag = value_receive("BaseParameter", "parameter_name", "uncontrollable_load_flag");
+	if (uncontrollable_load_flag == 0)
+	{
+		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `household%d` = '0.0' ", household_id);
+		sent_query();
+		if (household_id == householdTotal)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `totalLoad` = '0.0' ");
+			sent_query();
+		}
+		return result;
+	}
+
+	srand(time(NULL));
 	if (sample_time == 0)
 	{
 		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT COUNT(*) FROM `load_list` WHERE group_id = 4");
