@@ -41,7 +41,7 @@
 
 * Content:
   * SQLFunction:
-    1. ADD function 'demand response info'
+    1. ADD function `demand response info`
   * GHEMS:
     1. DR info
     2. constraint
@@ -56,5 +56,21 @@
   * SQLFunction:
 	1. `-404` no found data
 	2. `-999` data is NULL, not number etc...
+
+---
+## 2021/04/15
+
++ Commit link [57ebaf5](https://github.com/colin861209/DHEMS/commit/57ebaf539e656267a0b4b14565142209170e54d4)
+
+* Content:
+  * SQLFunction:
+    1. ADD function `flag_receive` & `value_receive`
+  * GHEMS:
+    1. Import function `flag_receive` & `value_receive`
+    2. Some work determine by flag
+    
+  * LHEMS:
+    1. Import function `flag_receive` & `value_receive`
+    2. Some work determine by flag
 
 ---
