@@ -1,6 +1,6 @@
 #!/bin/bash
 truncate -s 0 ~/how/DHEMS/log/*.log
-echo "#### RUN dr2 & LHEMS grid + ess & GHEMS no fc ####"
+echo "#### RUN no dr LHEMS: grid, GHEMS: grid, sell, ess, fc ####"
 for i in {1..96}
 do
    for j in {1..5}
