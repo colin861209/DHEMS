@@ -22,7 +22,7 @@
 
 float Hydro_Price = 0.0;
 #define Hydro_Cons 0.04		// unit kWh/g
-#define FC_START_POWER 0.35 // Pfc start power
+// #define FC_START_POWER 0.35 // Pfc start power
 using namespace std;
 int h, i, j, k, m, n = 0;
 double z = 0;
@@ -106,7 +106,7 @@ int main(int argc, const char **argv)
 	Pbat_max = parameter_tmp[8] * parameter_tmp[1];
 	Pgrid_max = parameter_tmp[9] * parameter_tmp[1];
 	Psell_max = parameter_tmp[10] * parameter_tmp[1];
-	Pfc_max = parameter_tmp[11];
+	Pfc_max = parameter_tmp[11] * parameter_tmp[1];
 	real_time = (int)parameter_tmp[12];
 
 	divide = (time_block / 24);
@@ -246,32 +246,36 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 
 	messagePrint(__LINE__, "Now time block : ", 'I', noo, 'Y');
 
-	float *data_power = new float[101];		// power
-	float *data_power_all = new float[101]; // total power
+	int data_sampling = 101;
+	float *data_power = new float[data_sampling];
+	float *data_power_all = new float[data_sampling];
 
-	float *P_power = new float[point_num];	   // power
-	float *P_power_all = new float[point_num]; // total power
+	float *P_power = new float[point_num];
+	float *P_power_all = new float[point_num];
 
-	for (i = 1; i <= 101; i++)
+	float fc_power_interval = Pfc_max / (data_sampling-1);
+	for (i = 0; i < data_sampling; i++)
 	{
-		if (i == 1)
-			data_power[i - 1] = FC_START_POWER;
-
+		float efficiency = 0.0;
+		float PLR = i * fc_power_interval / Pfc_max;
+		if (PLR <= 0.05)
+			efficiency = 0.2716;
 		else
-			data_power[i - 1] = (i - 1) * (Pfc_max - FC_START_POWER) * 0.01 + FC_START_POWER;
+			efficiency = (0.9033 * (pow(PLR, 5)) - 2.9996 * (pow(PLR, 4)) + 3.6503 * (pow(PLR, 3)) - 2.0704 * (pow(PLR, 2)) + 0.4623 * (pow(PLR, 1)) + 0.3747);
 
-		data_power_all[i - 1] = data_power[i - 1] / (0.00025732 * (pow(data_power[i - 1], 5)) - 0.003463 * (pow(data_power[i - 1], 4)) + 0.016041 * (pow(data_power[i - 1], 3)) - 0.02706 * (pow(data_power[i - 1], 2)) - 0.026982 * (pow(data_power[i - 1], 1)) + 0.5692);
+		data_power[i] = i * fc_power_interval;
+		data_power_all[i] = i * fc_power_interval / efficiency;
 	}
 
-	P_power[0] = 0.0;
-	P_power_all[0] = 0.0;
+	// P_power[0] = 0.0;
+	// P_power_all[0] = 0.0;
 	// messagePrint(__LINE__, "x_ is Pfc coeficient, y_ is Pfct coeficient", 'S', 0, 'Y');
 	// printf("\tLINE %d: x_0:%f  y_0:%f\n", __LINE__, P_power[0], P_power_all[0]);
-	for (j = 1; j < point_num; j++)
+	for (j = 0; j < point_num; j++)
 	{
-		P_power[j] = data_power[(j - 1) * (100 / (piecewise_num - 1))];
-		P_power_all[j] = data_power_all[(j - 1) * (100 / (piecewise_num - 1))];
-		// printf("\tLINE %d: x_%d:%f  y_%d:%f\n", __LINE__, j, P_power[j], j, P_power_all[j]);
+		P_power[j] = data_power[j * 100 / piecewise_num];
+		P_power_all[j] = data_power_all[j * 100 / piecewise_num];
+		printf("\tLINE %d: x_%d:%f  y_%d:%f\n", __LINE__, j * (100 / piecewise_num), data_power[j* 100 / piecewise_num], j * 100 / piecewise_num, data_power_all[j * 100 / piecewise_num]);
 	}
 
 	// =-=-=-=-=-=-=- choose column 'big_sunny' 'sunny' 'cloudy' in table solar_data -=-=-=-=-=-=-= //
@@ -638,7 +642,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 	{
 		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + j * variable), price2[j + sample_time] * delta_T);
 		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Psell") + 1 + j * variable), price2[j + sample_time] * delta_T * (-1));
-		// glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pfct") + 1 + j * variable), Hydro_Price / Hydro_Cons * delta_T); //FC cost
+		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pfct") + 1 + j * variable), Hydro_Price / Hydro_Cons * delta_T); //FC cost
 	}
 	if (dr_mode != 0)
 	{
@@ -683,9 +687,9 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 
 	parm.presolve = GLP_ON;
 	//not cloudy
-	//parm.ps_heur = GLP_ON;
-	//parm.bt_tech = GLP_BT_BPH;
-	//parm.br_tech = GLP_BR_PCH;
+	// parm.ps_heur = GLP_ON;
+	// parm.bt_tech = GLP_BT_BPH;
+	// parm.br_tech = GLP_BR_PCH;
 
 	//cloud
 	// parm.gmi_cuts = GLP_ON;

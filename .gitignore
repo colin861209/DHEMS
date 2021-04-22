@@ -1,3 +1,7 @@
 build/**/*
 log/**/*
+experiment/**/*
 .vscode
+auo.csv
+auo_src/experiment.cpp
+auo_src/history.cpp
