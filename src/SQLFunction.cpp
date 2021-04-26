@@ -110,7 +110,7 @@ int find_variableName_position(vector<string> variableNameArray, string target)
 		return -1;
 }
 
-int *demand_response_info()
+int *demand_response_info(int dr_mode)
 {
 	functionPrint(__func__);
 
