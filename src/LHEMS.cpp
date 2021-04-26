@@ -114,7 +114,7 @@ int main(void)
 	messagePrint(__LINE__, "dr mode: ", 'I', dr_mode);
 	if (dr_mode != 0)
 	{
-		int *dr_info = demand_response_info();
+		int *dr_info = demand_response_info(dr_mode);
 		dr_startTime = dr_info[0];
 		dr_endTime = dr_info[1];
 		dr_minDecrease_power = dr_info[2];
@@ -181,23 +181,13 @@ int main(void)
 	// print_BaseParameter_SystemState(real_time, same_day);
 
 	// =-=-=-=-=-=-=- get electric price data -=-=-=-=-=-=-= //
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT COUNT(*) FROM price");
-	int priceAmount = turn_value_to_int(0);
-	float *price = new float[priceAmount];
-	float *price2 = new float[time_block];
-	for (i = 0; i < priceAmount; i++)
+	float *price = new float[time_block];
+	for (i = 0; i < time_block; i++)
 	{
 		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT price_value FROM price WHERE price_period = %d", i);
 		price[i] = turn_value_to_float(0);
 	}
 
-	for (int x = 0; x < 24; x++) //(Transform the Price and PV power array from 24 to 96)
-	{
-		for (int y = x * divide; y < (x * divide) + divide; y++)
-		{
-			price2[y] = price[x];
-		}
-	}
 	// =-=-=-=-=-=-=- determine which mode and get SOC if in need -=-=-=-=-=-=-= //
 	if ((sample_time + 1) != 97)
 		same_day = 1;
@@ -312,7 +302,7 @@ int main(void)
 			varying_t_pow[i][z] = int(turn_float(z + 3) * divide);
 		time_tmp.clear();
 
-		optimization(variable_name, household_id, interrupt_start, interrupt_end, interrupt_ot, interrupt_reot, interrupt_p, uninterrupt_start, uninterrupt_end, uninterrupt_ot, uninterrupt_reot, uninterrupt_p, uninterrupt_flag, varying_start, varying_end, varying_ot, varying_reot, varying_flag, varying_t_pow, varying_p_pow, app_count, price2, uncontrollable_load);
+		optimization(variable_name, household_id, interrupt_start, interrupt_end, interrupt_ot, interrupt_reot, interrupt_p, uninterrupt_start, uninterrupt_end, uninterrupt_ot, uninterrupt_reot, uninterrupt_p, uninterrupt_flag, varying_start, varying_end, varying_ot, varying_reot, varying_flag, varying_t_pow, varying_p_pow, app_count, price, uncontrollable_load);
 
 		update_loadModel(interrupt_p, uninterrupt_p, household_id);
 	}
@@ -340,7 +330,7 @@ int main(void)
 
 // ---------------------------------------------------------------------------------------------------------------------------------------------------- GLPK ---------------------------------------------------------------------------------------------------------------------------------------------------- //
 
-void optimization(vector<string> variable_name, int household_id, int *interrupt_start, int *interrupt_end, int *interrupt_ot, int *interrupt_reot, float *interrupt_p, int *uninterrupt_start, int *uninterrupt_end, int *uninterrupt_ot, int *uninterrupt_reot, float *uninterrupt_p, int *uninterrupt_flag, int *varying_start, int *varying_end, int *varying_ot, int *varying_reot, int *varying_flag, int **varying_t_pow, float **varying_p_pow, int app_count, float *price2, float *uncontrollable_load)
+void optimization(vector<string> variable_name, int household_id, int *interrupt_start, int *interrupt_end, int *interrupt_ot, int *interrupt_reot, float *interrupt_p, int *uninterrupt_start, int *uninterrupt_end, int *uninterrupt_ot, int *uninterrupt_reot, float *uninterrupt_p, int *uninterrupt_flag, int *varying_start, int *varying_end, int *varying_ot, int *varying_reot, int *varying_flag, int **varying_t_pow, float **varying_p_pow, int app_count, float *price, float *uncontrollable_load)
 {
 	functionPrint(__func__);
 	time_t t = time(NULL);
@@ -1041,7 +1031,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 
 	for (j = 0; j < (time_block - sample_time); j++)
 	{
-		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + j * variable), price2[j + sample_time] * delta_T);
+		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + j * variable), price[j + sample_time] * delta_T);
 	}
 	if (dr_mode != 0)
 	{
@@ -1210,21 +1200,21 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 		// 		h = i + variable * j;
 		// 		s[j] = glp_mip_col_val(mip, h);
 		// 		now_grid[j + sample_time] += (s[j]) * interrupt_p[i - 1] * delta_T;
-		// 		varying_grid[j + sample_time] += (s[j]) * interrupt_p[i - 1] * price2[j + sample_time] * delta_T;
+		// 		varying_grid[j + sample_time] += (s[j]) * interrupt_p[i - 1] * price[j + sample_time] * delta_T;
 		// 	}
 		// 	else if (i >= (interrupt_num + 1) && i < (interrupt_num + uninterrupt_num + 1))
 		// 	{
 		// 		h = i + variable * j;
 		// 		s[j] = glp_mip_col_val(mip, h);
 		// 		now_grid[j + sample_time] += (s[j]) * uninterrupt_p[i - 1 - interrupt_num] * delta_T;
-		// 		varying_grid[j + sample_time] += (s[j]) * uninterrupt_p[i - 1 - interrupt_num] * price2[j + sample_time] * delta_T;
+		// 		varying_grid[j + sample_time] += (s[j]) * uninterrupt_p[i - 1 - interrupt_num] * price[j + sample_time] * delta_T;
 		// 	}
 		// 	else if (i >= (interrupt_num + uninterrupt_num + 1) && i < (interrupt_num + uninterrupt_num + varying_num + 1))
 		// 	{
 		// 		k = variable;
 		// 		s[j] = glp_mip_col_val(mip, k);
 		// 		now_grid[j + sample_time] += (float)(glp_mip_col_val(mip, i + variable * j)) * s[j] * delta_T;
-		// 		varying_grid[j + sample_time] += (float)(glp_mip_col_val(mip, i + variable * j)) * s[j] * price2[j + sample_time] * delta_T;
+		// 		varying_grid[j + sample_time] += (float)(glp_mip_col_val(mip, i + variable * j)) * s[j] * price[j + sample_time] * delta_T;
 		// 	}
 		// }
 
@@ -1238,7 +1228,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	for (j = 0; j < (time_block - sample_time); j++)
 	{
 		s[j] = glp_mip_col_val(mip, h);
-		cost[j + sample_time] = s[j] * price2[j + sample_time] * delta_T;
+		cost[j + sample_time] = s[j] * price[j + sample_time] * delta_T;
 		opt_cost_result += cost[j + sample_time];
 		h = (h + variable);
 	}

@@ -42,8 +42,8 @@ void updateBaseParameter_from_1To(int length, vector<float>);
 void print_BaseParameter_SystemState(int real_time, int same_day);
 void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2);
 void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption, float *real_sell_price, float *demandResponse_feedback, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_priceSum, float totalLoad_taipowerPriceSum, float demandResponse_feedbackSum);
-void optimization(vector<string> variable_name, float *load_model, float *price2);
-void calculateCostInfo(float *price2);
+void optimization(vector<string> variable_name, float *load_model, float *price);
+void calculateCostInfo(float *price);
 void insert_GHEMS_variable();
 
 int main(int argc, const char **argv)
@@ -87,7 +87,7 @@ int main(int argc, const char **argv)
 	messagePrint(__LINE__, "dr mode: ", 'I', dr_mode);
 	if (dr_mode != 0)
 	{
-		int *dr_info = demand_response_info();
+		int *dr_info = demand_response_info(dr_mode);
 		dr_startTime = dr_info[0];
 		dr_endTime = dr_info[1];
 		dr_minDecrease_power = dr_info[2];
@@ -154,21 +154,11 @@ int main(int argc, const char **argv)
 	// print_BaseParameter_SystemState(real_time, same_day);
 
 	// =-=-=-=-=-=-=- get electric price data -=-=-=-=-=-=-= //
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT COUNT(*) FROM price");
-	int priceAmount = turn_value_to_int(0);
-	float *price = new float[priceAmount];
-	float *price2 = new float[time_block];
-	for (i = 1; i < 25; i++)
+	float *price = new float[time_block];
+	for (i = 0; i < time_block; i++)
 	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT price_value FROM price WHERE price_period = %d", i - 1);
-		price[i - 1] = turn_value_to_float(0);
-	}
-	for (int x = 0; x < 24; x++)
-	{
-		for (int y = x * divide; y < (x * divide) + divide; y++)
-		{
-			price2[y] = price[x];
-		}
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT price_value FROM price WHERE price_period = %d", i);
+		price[i] = turn_value_to_float(0);
 	}
 
 	// =-=-=-=-=-=-=- get households' loads consumption from table 'totalLoad_model' & uncontrollable load from table 'LHEMS_uncontrollable_load' -=-=-=-=-=-=-= //
@@ -219,8 +209,8 @@ int main(int argc, const char **argv)
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%d-%02d-%02d' WHERE parameter_name = 'lastTime_execute' ", now_time.tm_year + 1900, now_time.tm_mon + 1, now_time.tm_mday);
 	sent_query();
 
-	optimization(variable_name, load_model, price2);
-	calculateCostInfo(price2);
+	optimization(variable_name, load_model, price);
+	calculateCostInfo(price);
 
 	printf("LINE %d: sample_time = %d\n", __LINE__, sample_time);
 	printf("LINE %d: next sample_time = %d\n\n", __LINE__, sample_time + 1);
@@ -232,7 +222,7 @@ int main(int argc, const char **argv)
 	return 0;
 }
 
-void optimization(vector<string> variable_name, float *load_model, float *price2)
+void optimization(vector<string> variable_name, float *load_model, float *price)
 {
 	functionPrint(__func__);
 	time_t t = time(NULL);
@@ -640,8 +630,8 @@ void optimization(vector<string> variable_name, float *load_model, float *price2
 
 	for (j = 0; j < (time_block - sample_time); j++)
 	{
-		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + j * variable), price2[j + sample_time] * delta_T);
-		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Psell") + 1 + j * variable), price2[j + sample_time] * delta_T * (-1));
+		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pgrid") + 1 + j * variable), price[j + sample_time] * delta_T);
+		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Psell") + 1 + j * variable), price[j + sample_time] * delta_T * (-1));
 		glp_set_obj_coef(mip, (find_variableName_position(variable_name, "Pfct") + 1 + j * variable), Hydro_Price / Hydro_Cons * delta_T); //FC cost
 	}
 	if (dr_mode != 0)
@@ -1004,7 +994,7 @@ void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_
 	// step1_sell = opt_sell_result;
 }
 
-void calculateCostInfo(float *price2)
+void calculateCostInfo(float *price)
 {
 	functionPrint(__func__);
 
@@ -1090,7 +1080,7 @@ void calculateCostInfo(float *price2)
 		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT totalLoad FROM totalLoad_model WHERE time_block = %d ", i);
 		totalLoad[i] = turn_value_to_float(0);
 		totalLoad_sum += totalLoad[i];
-		totalLoad_price[i] = totalLoad[i] * price2[i] * delta_T;
+		totalLoad_price[i] = totalLoad[i] * price[i] * delta_T;
 		totalLoad_priceSum += totalLoad_price[i];
 
 		// =-=-=-=-=-=-=- calcalte optimize Pgrid consumption spend how much money -=-=-=-=-=-=-= //
@@ -1098,7 +1088,7 @@ void calculateCostInfo(float *price2)
 		{
 			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM GHEMS_control_status WHERE equip_name = '%s' ", i, "Pgrid");
 			float grid_tmp = turn_value_to_float(0);
-			real_grid_pirce[i] = grid_tmp * price2[i] * delta_T;
+			real_grid_pirce[i] = grid_tmp * price[i] * delta_T;
 			real_grid_pirceSum += real_grid_pirce[i];
 			if (dr_mode != 0)
 			{
@@ -1114,7 +1104,7 @@ void calculateCostInfo(float *price2)
 		if (Psell_flag != -404 && Psell_flag != -999)
 		{
 			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM GHEMS_control_status WHERE equip_name = '%s' ", i, "Psell");
-			real_sell_pirce[i] = turn_value_to_float(0) * price2[i] * delta_T;
+			real_sell_pirce[i] = turn_value_to_float(0) * price[i] * delta_T;
 			real_sell_pirceSum += real_sell_pirce[i];
 		}
 
