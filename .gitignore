@@ -5,3 +5,4 @@ experiment/**/*
 auo.csv
 auo_src/experiment.cpp
 auo_src/history.cpp
+auo_src/energyDeployment.cpp
