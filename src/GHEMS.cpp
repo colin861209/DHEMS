@@ -547,13 +547,13 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		{
 			for (k = 1; k <= piecewise_num; k++)
 			{
-				coefficient[(time_block - sample_time) * 14 + 1 + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = 1.0; //z       //z1+z2+z3+......=1
+				coefficient[(time_block - sample_time) * 15 + 1 + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = 1.0; //z       //z1+z2+z3+......=1
 			}
 		}
 		for (i = 1; i <= (time_block - sample_time); i++)
 		{
-			glp_set_row_name(mip, ((time_block - sample_time) * 14 + 1 + i), "");
-			glp_set_row_bnds(mip, ((time_block - sample_time) * 14 + 1 + i), GLP_FX, 1.0, 1.0);
+			glp_set_row_name(mip, ((time_block - sample_time) * 15 + 1 + i), "");
+			glp_set_row_bnds(mip, ((time_block - sample_time) * 15 + 1 + i), GLP_FX, 1.0, 1.0);
 		}
 
 		// 0 <= λi j <= zi j
@@ -561,16 +561,16 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		{
 			for (k = 1; k <= piecewise_num; k++)
 			{
-				coefficient[(time_block - sample_time) * (14 + k) + 1 + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = -1.0;		 //z       //λi-zi  <=0
-				coefficient[(time_block - sample_time) * (14 + k) + 1 + i][i * variable + find_variableName_position(variable_name, "lambda_Pfc" + to_string(k))] = 1.0; //λ
+				coefficient[(time_block - sample_time) * (15 + k) + 1 + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = -1.0;		 //z       //λi-zi  <=0
+				coefficient[(time_block - sample_time) * (15 + k) + 1 + i][i * variable + find_variableName_position(variable_name, "lambda_Pfc" + to_string(k))] = 1.0; //λ
 			}
 		}
 		for (i = 1; i <= (time_block - sample_time); i++)
 		{
 			for (j = 1; j <= piecewise_num; j++) //s-z<=0
 			{
-				glp_set_row_name(mip, ((time_block - sample_time) * (14 + j) + 1 + i), "");
-				glp_set_row_bnds(mip, ((time_block - sample_time) * (14 + j) + 1 + i), GLP_UP, 0.0, 0.0);
+				glp_set_row_name(mip, ((time_block - sample_time) * (15 + j) + 1 + i), "");
+				glp_set_row_bnds(mip, ((time_block - sample_time) * (15 + j) + 1 + i), GLP_UP, 0.0, 0.0);
 			}
 		}
 	}
