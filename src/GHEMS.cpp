@@ -37,9 +37,7 @@ string weather;
 float step1_bill = 0.0, step1_sell = 0.0, step1_PESS = 0.0;
 vector<float> Pgrid_max_array;
 char column[400] = "A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21,A22,A23,A24,A25,A26,A27,A28,A29,A30,A31,A32,A33,A34,A35,A36,A37,A38,A39,A40,A41,A42,A43,A44,A45,A46,A47,A48,A49,A50,A51,A52,A53,A54,A55,A56,A57,A58,A59,A60,A61,A62,A63,A64,A65,A66,A67,A68,A69,A70,A71,A72,A73,A74,A75,A76,A77,A78,A79,A80,A81,A82,A83,A84,A85,A86,A87,A88,A89,A90,A91,A92,A93,A94,A95";
-int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector<string> variable_name);
-void updateBaseParameter_from_1To(int length, vector<float>);
-void print_BaseParameter_SystemState(int real_time, int same_day);
+int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name);
 void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2);
 void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption, float *real_sell_price, float *demandResponse_feedback, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_priceSum, float totalLoad_taipowerPriceSum, float demandResponse_feedbackSum);
 void optimization(vector<string> variable_name, float *load_model, float *price);
@@ -54,7 +52,7 @@ int main(int argc, const char **argv)
 
 	time_t t = time(NULL);
 	struct tm now_time = *localtime(&t);
-	int same_day = 0, real_time = 0;
+	int real_time = 0;
 
 	int *position = new int[16];
 
@@ -151,8 +149,6 @@ int main(int argc, const char **argv)
 	variable = variable_name.size();
 
 	sample_time = value_receive("BaseParameter", "parameter_name", "Global_next_simulate_timeblock");
-	// updateBaseParameter_from_1To(13, parameter_tmp);
-	// print_BaseParameter_SystemState(real_time, same_day);
 
 	// =-=-=-=-=-=-=- get electric price data -=-=-=-=-=-=-= //
 	float *price = new float[time_block];
@@ -177,11 +173,12 @@ int main(int argc, const char **argv)
 	}
 
 	// =-=-=-=-=-=-=- return 1 after determine mode and get SOC -=-=-=-=-=-=-= //
-	if ((sample_time + 1) != 97)
-		same_day = 1;
-	else
-		same_day = 0;
-	real_time = determine_realTimeOrOneDayMode_andGetSOC(same_day, real_time, variable_name);
+	real_time = determine_realTimeOrOneDayMode_andGetSOC(real_time, variable_name);
+	if ((sample_time + 1) == 97)
+	{
+		messagePrint(__LINE__, "Time block to the end !!");
+		exit(0);
+	}	
 
 	sample_time = value_receive("BaseParameter", "parameter_name", "Global_next_simulate_timeblock");
 	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
@@ -788,14 +785,14 @@ void setting_GLPK_columnBoundary(vector<string> variable_name, glp_prob *mip)
 	}
 }
 
-int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector<string> variable_name)
+int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name)
 {
 	// 'Realtime mode' if same day & real time = 1;
 	// 'One day mode' =>
 	// 		1. SOC = 0.7 if real_time = 0,
 	// 		2. Use Previous SOC if real_time = 1.
 	functionPrint(__func__);
-	if (same_day == 1 && real_time == 1)
+	if (real_time == 1)
 	{
 		messagePrint(__LINE__, "Real Time Mode...", 'S', 0, 'Y');
 
@@ -851,44 +848,6 @@ int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector
 	}
 
 	return real_time;
-}
-
-void updateBaseParameter_from_1To(int length, vector<float> parameter_tmp)
-{
-	functionPrint(__func__);
-	for (int i = 1; i <= length; i++)
-	{
-		if (parameter_tmp[i - 1] - (int)parameter_tmp[i - 1] != 0)
-		{
-			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%.3f' WHERE  parameter_id = '%d'", parameter_tmp[i - 1], i);
-			sent_query();
-		}
-		else
-		{
-			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%.0f' WHERE  parameter_id = '%d'", parameter_tmp[i - 1], i);
-			sent_query();
-		}
-	}
-}
-
-void print_BaseParameter_SystemState(int real_time, int same_day)
-{
-
-	functionPrint(__func__);
-	messagePrint(__LINE__, "time block : ", 'I', time_block, 'Y');
-	messagePrint(__LINE__, "variable numbers : ", 'I', variable, 'Y');
-	messagePrint(__LINE__, "system voltage : ", 'I', Vsys, 'Y');
-	printf("\tLINE %d: battery capacity:%.3f\n", __LINE__, Cbat);
-	messagePrint(__LINE__, "SOC min : ", 'F', SOC_min, 'Y');
-	messagePrint(__LINE__, "SOC max : ", 'F', SOC_max, 'Y');
-	messagePrint(__LINE__, "SOC max : ", 'F', SOC_max, 'Y');
-	messagePrint(__LINE__, "SOC threads : ", 'F', SOC_thres, 'Y');
-	messagePrint(__LINE__, "Pbat min : ", 'F', Pbat_min, 'Y');
-	messagePrint(__LINE__, "Pbat max : ", 'F', Pbat_max, 'Y');
-	messagePrint(__LINE__, "Pgrid max : ", 'F', Pgrid_max, 'Y');
-	messagePrint(__LINE__, "Psell max : ", 'F', Psell_max, 'Y');
-	messagePrint(__LINE__, "User set for realtime(0->no 1->yes) : ", 'I', real_time, 'Y');
-	messagePrint(__LINE__, "Last running were same day(0->no 1->yes) : ", 'I', same_day, 'Y');
 }
 
 void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2)

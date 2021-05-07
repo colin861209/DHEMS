@@ -2,7 +2,6 @@
 
 * determine_realTimeOrOneDayMode_andGetSOC
     * Return real_time '1'
-    * NOTE: variable `same_day` isn't use in simulation
     * Case:
     1. real_time = 0 
         * truncate tables (contorl_status, real_status, cost)
