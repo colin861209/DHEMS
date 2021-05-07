@@ -26,9 +26,7 @@ float Cbat = 0.0, Vsys = 0.0, SOC_ini = 0.0, SOC_min = 0.0, SOC_max = 0.0, SOC_t
 float step1_bill = 0.0, step1_sell = 0.0, step1_PESS = 0.0; //?�[?B?J?@?p??q?O
 
 char column[400] = "A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21,A22,A23,A24,A25,A26,A27,A28,A29,A30,A31,A32,A33,A34,A35,A36,A37,A38,A39,A40,A41,A42,A43,A44,A45,A46,A47,A48,A49,A50,A51,A52,A53,A54,A55,A56,A57,A58,A59,A60,A61,A62,A63,A64,A65,A66,A67,A68,A69,A70,A71,A72,A73,A74,A75,A76,A77,A78,A79,A80,A81,A82,A83,A84,A85,A86,A87,A88,A89,A90,A91,A92,A93,A94,A95";
-int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector<string> variable_name);
-void updateBaseParameter_from_1To(int length, float *);
-void print_BaseParameter_SystemState(int real_time, int same_day);
+int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name);
 void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2);
 void countUninterruptAndVaryingLoads_Flag(int *, int *, int);
 void countLoads_AlreadyOpenedTimes(int *, int);
@@ -46,7 +44,7 @@ int main(void)
 {
 	time_t t = time(NULL);
 	struct tm now_time = *localtime(&t);
-	int same_day = 0, real_time = 0;
+	int real_time = 0;
 
 	if ((mysql_real_connect(mysql_con, "140.124.42.65", "root", "fuzzy314", "DHEMS", 3306, NULL, 0)) == NULL)
 	{
@@ -145,7 +143,7 @@ int main(void)
 	}
 	if (Pgrid_flag == 1)
 		variable_name.push_back("Pgrid");
-	if (Pgrid_flag == 1)
+	if (Pess_flag == 1)
 	{
 		variable_name.push_back("Pess");
 		variable_name.push_back("Pcharge");
@@ -171,14 +169,9 @@ int main(void)
 
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `BaseParameter` SET value = %d WHERE `BaseParameter`.`parameter_name` = 'local_variable_num' ", variable);
 	sent_query();
-	// =-=-=-=-=-=-=- Update loads amount to BaseParameter -=-=-=-=-=-=-= //
-	// it can be ignored
-	// updateBaseParameter_from_1To(16, base_par);
 
 	// =-=-=-=-=-=-=- Get simulation time slot -=-=-=-=-=-=-= //
 	sample_time = value_receive("BaseParameter", "parameter_name", "next_simulate_timeblock");
-
-	// print_BaseParameter_SystemState(real_time, same_day);
 
 	// =-=-=-=-=-=-=- get electric price data -=-=-=-=-=-=-= //
 	float *price = new float[time_block];
@@ -189,11 +182,12 @@ int main(void)
 	}
 
 	// =-=-=-=-=-=-=- determine which mode and get SOC if in need -=-=-=-=-=-=-= //
-	if ((sample_time + 1) != 97)
-		same_day = 1;
-	else
-		same_day = 0;
-	real_time = determine_realTimeOrOneDayMode_andGetSOC(same_day, real_time, variable_name);
+	real_time = determine_realTimeOrOneDayMode_andGetSOC(real_time, variable_name);
+	if ((sample_time + 1) == 97)
+	{
+		messagePrint(__LINE__, "Time block to the end !!");
+		exit(0);
+	}
 
 	// =-=-=-=-=-=-=- Update date is necesssary in real experience -=-=-=-=-=-=-= //
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%d-%02d-%02d' WHERE parameter_name = 'lastTime_execute' ", now_time.tm_year + 1900, now_time.tm_mon + 1, now_time.tm_mday);
@@ -1240,14 +1234,14 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	return;
 }
 
-int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector<string> variable_name)
+int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name)
 {
 	// 'Realtime mode' if same day & real time = 1;
 	// 'One day mode' =>
 	// 		1. SOC = 0.7 if real_time = 0,
 	// 		2. Use Previous SOC if real_time = 1.
 	functionPrint(__func__);
-	if (same_day == 1 && real_time == 1)
+	if (real_time == 1)
 	{
 		messagePrint(__LINE__, "Real Time Mode...", 'S', 0, 'Y');
 
@@ -1258,20 +1252,12 @@ int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector
 		}
 
 		// get previous SOC value
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM LHEMS_control_status WHERE equip_name = '%s' and household_id = %d", sample_time - 1, "SOC", household_id);
-		SOC_ini = turn_value_to_float(0);
-		messagePrint(__LINE__, "SOC = ", 'F', SOC_ini, 'Y');
-
-		// snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `BaseParameter` SET `value` = '%f'  WHERE parameter_name = 'now_SOC' ", SOC_ini);
-		// sent_query();
-
-		// snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'now_SOC'"); //get now_SOC
-		// SOC_ini = turn_value_to_float(0);
-		// if (SOC_ini > 90)
-		// 	SOC_ini = 89.8;
-
-		messagePrint(__LINE__, "NOW REAL SOC = ", 'F', SOC_ini, 'Y');
-		messagePrint(__LINE__, "Should same as previous SOC or 89.8 (if previous SOC > 90)", 'S', 0, 'Y');
+		if (Pess_flag)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT A%d FROM LHEMS_control_status WHERE equip_name = '%s' and household_id = %d", sample_time - 1, "SOC", household_id);
+			SOC_ini = turn_value_to_float(0);
+			messagePrint(__LINE__, "SOC = ", 'F', SOC_ini, 'Y');
+		}
 	}
 	else
 	{
@@ -1285,23 +1271,11 @@ int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector
 			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %d WHERE parameter_name = 'next_simulate_timeblock' ", sample_time);
 			sent_query();
 		}
-		// snprintf(sql_buffer, sizeof(sql_buffer), "TRUNCATE TABLE cost");
-		// sent_query();
 
-		if (real_time == 0)
-		{
-			// don't consider yesterday last time slot SOC
-			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'ini_SOC'"); //get ini_SOC
-			SOC_ini = turn_value_to_float(0);
-			messagePrint(__LINE__, "ini_SOC : ", 'F', SOC_ini, 'Y');
-		}
-		// else
-		// {
-		// 	// consider the day before yesterday SOC
-		// 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'now_SOC'"); //get now_SOC
-		// 	SOC_ini = turn_value_to_float(0);
-		// 	messagePrint(__LINE__, "now_SOC : ", 'F', SOC_ini, 'Y');
-		// }
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'ini_SOC'"); //get ini_SOC
+		SOC_ini = turn_value_to_float(0);
+		messagePrint(__LINE__, "ini_SOC : ", 'F', SOC_ini, 'Y');
+
 		if (household_id == householdTotal)
 		{
 			real_time = 1; //if you don't want do real_time,please commend it.
@@ -1311,48 +1285,6 @@ int determine_realTimeOrOneDayMode_andGetSOC(int same_day, int real_time, vector
 	}
 
 	return real_time;
-}
-
-void updateBaseParameter_from_1To(int length, float *base_par)
-{
-	functionPrint(__func__);
-	for (int i = 1; i <= length; i++)
-	{
-		if (base_par[i - 1] - (int)base_par[i - 1] != 0)
-		{
-			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%.3f' WHERE  parameter_id = '%d'", base_par[i - 1], i);
-			sent_query();
-		}
-		else
-		{
-			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%.0f' WHERE  parameter_id = '%d'", base_par[i - 1], i);
-			sent_query();
-		}
-	}
-}
-
-void print_BaseParameter_SystemState(int real_time, int same_day)
-{
-
-	functionPrint(__func__);
-	messagePrint(__LINE__, "time block : ", 'I', time_block, 'Y');
-	messagePrint(__LINE__, "household total : ", 'I', householdTotal, 'Y');
-	messagePrint(__LINE__, "variable number : ", 'I', variable, 'Y');
-	messagePrint(__LINE__, "interruptable app num : ", 'I', interrupt_num, 'Y');
-	messagePrint(__LINE__, "uninterruptable app num : ", 'I', uninterrupt_num, 'Y');
-	messagePrint(__LINE__, "varying app num : ", 'I', varying_num, 'Y');
-	messagePrint(__LINE__, "system voltage : ", 'I', Vsys, 'Y');
-	printf("\tLINE %d: battery capacity:%.3f\n", __LINE__, Cbat);
-	messagePrint(__LINE__, "SOC min : ", 'F', SOC_min, 'Y');
-	messagePrint(__LINE__, "SOC max : ", 'F', SOC_max, 'Y');
-	messagePrint(__LINE__, "SOC max : ", 'F', SOC_max, 'Y');
-	messagePrint(__LINE__, "SOC threads : ", 'F', SOC_thres, 'Y');
-	messagePrint(__LINE__, "Pbat min : ", 'F', Pbat_min, 'Y');
-	messagePrint(__LINE__, "Pbat max : ", 'F', Pbat_max, 'Y');
-	messagePrint(__LINE__, "Pgrid max : ", 'F', Pgrid_max, 'Y');
-	messagePrint(__LINE__, "Psell max : ", 'F', Psell_max, 'Y');
-	messagePrint(__LINE__, "User set for realtime(0->no 1->yes) : ", 'I', real_time, 'Y');
-	messagePrint(__LINE__, "Last running were same day(0->no 1->yes) : ", 'I', same_day, 'Y');
 }
 
 void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2)

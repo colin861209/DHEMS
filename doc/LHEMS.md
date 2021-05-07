@@ -2,7 +2,6 @@
 
 * determine_realTimeOrOneDayMode_andGetSOC
     * Return real_time '1'
-    * NOTE: variable `same_day` isn't use in simulation
     * Case:
     1. real_time = 0 
         1. household_id = 1
