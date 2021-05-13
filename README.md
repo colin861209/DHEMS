@@ -68,9 +68,25 @@
   * GHEMS:
     1. Import function `flag_receive` & `value_receive`
     2. Some work determine by flag
-    
   * LHEMS:
     1. Import function `flag_receive` & `value_receive`
     2. Some work determine by flag
 
 ---
+## 2021/05/13
+
++ Commit link [7cbd8f1](https://github.com/colin861209/DHEMS/commit/7cbd8f1a155745b9f882687581a71219b8c2f863)
++ Commit link [a09559e](https://github.com/colin861209/DHEMS/commit/a09559eef95d9d282c79429b102453cef4ac622b)
+
+* Content:
+  * scheduling_parameter:
+    1. Function `display_coefAndBnds_rowNum`
+    2. Display `coef_row_num` and `bnd_row_num`
+    3. Note: `coef_row_num range` substractd from `bnd_row_num range` should equal to `1` 
+  * GHEMS:
+    1. Remove GLPK coefficient replace `(time_block-sample_time) * {number}` with `coef_row_num`
+    2. Remove GLPK set_row_bnds replace `(time_block-sample_time) * {number} + 1` with `bnd_row_num`
+    3. Add for loop execute number after for loop `ex: coef_row_num += 96`
+
+---
+
