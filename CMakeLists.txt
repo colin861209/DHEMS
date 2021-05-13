@@ -19,12 +19,12 @@ include_directories(
 link_directories(${LIBMYSQLCLIENT_LIBRARY_DIRS})
 
 # add the executable
-add_executable(LHEMS src/LHEMS.cpp src/new2D.cpp src/SQLFunction.cpp)
+add_executable(LHEMS src/LHEMS.cpp src/new2D.cpp src/SQLFunction.cpp src/scheduling_parameter.cpp)
 target_link_libraries(LHEMS 
 ${LIBMYSQLCLIENT_LIBRARIES} 
 /usr/local/lib/libglpk.a
 )
-add_executable(GHEMS src/GHEMS.cpp src/new2D.cpp src/SQLFunction.cpp)
+add_executable(GHEMS src/GHEMS.cpp src/new2D.cpp src/SQLFunction.cpp src/scheduling_parameter.cpp)
 target_link_libraries(GHEMS 
 ${LIBMYSQLCLIENT_LIBRARIES} 
 /usr/local/lib/libglpk.a

@@ -2,7 +2,6 @@
 
 * determine_realTimeOrOneDayMode_andGetSOC
     * Return real_time '1'
-    * NOTE: variable `same_day` isn't use in simulation
     * Case:
     1. real_time = 0 
         1. household_id = 1
@@ -43,3 +42,8 @@
     * Uncontrollable load generate
     * random target 
         1. operation time
+
+* household_weighting
+    * Doing when **demand response**
+    * Each household decrease degree about Pgridmax
+    * Count current time block, so should run corresponsed time block same as the GHEMS time block

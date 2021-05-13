@@ -42,3 +42,23 @@
     * Purpose : Return array position
     1. Input your scheduling variable array. ex: `variable_name` in `GHEMS`
     2. Input scheduling variable array target. ex: `"Pgrid"` in `variable_name` in `GHEMS`
+
+* demand_response_info
+    * Get demand response
+    1. start time
+    2. end time 
+    3. min decrease power
+    4. min feedback price
+    5. customer base line
+
+* flag_recevie
+    * Use for receive `GHEMS_flag` & `LHEMS_flag` variable `flag` status
+    1. Input `table name`
+    2. Input `table column name`
+
+* value_receive
+    * Use for receive value status
+    1. Input `table name`
+    2. Input `table column name`
+    3. Input `table column text name` or `table column number`
+    4. Input `'F'` to return float type

@@ -2,7 +2,6 @@
 
 * determine_realTimeOrOneDayMode_andGetSOC
     * Return real_time '1'
-    * NOTE: variable `same_day` isn't use in simulation
     * Case:
     1. real_time = 0 
         * truncate tables (contorl_status, real_status, cost)
@@ -54,3 +53,6 @@
 * insert_GHEMS_variable
     * Record CEMS enerage limit, due to `BaseParameter` is for HEMS
     
+* getPrevious_battery_dischargeSOC
+    * Calculate `ESS discharge SOC` amount until sample time
+    * Calculate `Total discharge SOC` amount for all day SOC, it's for preview, can be ignore
