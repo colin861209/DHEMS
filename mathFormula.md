@@ -49,10 +49,10 @@ $$
   <!-- * $P_{u, grid}^{j}$ 第 u 個住戶在第 j 個時刻消耗的市電功率 -->
   <!-- * $P_{u, grid}^{max}$ 第 u 個住戶的市電最大功率限制 -->
   <!-- * $\alpha_{u}^{j}$ 第 u 個住戶在第 j 個時刻同意使用多少百分比之市電功率 -->
-    $$ P_{grid}^{max} = \sum_{u=1}^{U} \alpha_{u}^{j} P_{u, grid}^{max} $$
-    $$ 0 \leq P_{grid}^{j} \leq P_{grid}^{max} $$
+    $$ P_{grid}^{j,max} = \sum_{u=1}^{U} \alpha_{u}^{j} P_{u, grid}^{j,max} $$
+    $$ 0 \leq P_{grid}^{j} \leq P_{grid}^{j,max} $$
 
-    $$ P_{grid}^{j} \leq \mu_{grid}^{j}P_{grid}^{max} $$
+    $$ P_{grid}^{j} \leq \mu_{grid}^{j}P_{grid}^{j,max} $$
 
     $$ P_{sell}^{j} \leq [1 - \mu_{grid}^{j}] P_{sell}^{max} $$
     
@@ -68,14 +68,40 @@ $$
   
     <!-- * $P_{u,ESS}^{j}$ 第 u 個住戶在第 j 個時刻使用的電池功率 -->
     <!-- * $\beta_{u}^{j}$ 第 u 個住戶在第 j 個時刻同意使用多少百分比之電池功率 -->
-
+    * variable
     $$P_{discharge}^{max} \leq P^{j}_{ESS} \leq P_{charge}^{max}$$
 
-    $$SOC^{min} \leq SOC_{j-1} + \frac {P^{j}_{ESS}T_{s}}{C_{ESS}V_{ESS}} \leq SOC^{max}$$
+    $$ \frac {P^{max}_{discharge}T_{s}}{C_{ESS}V_{ESS}} \leq SOC_{j}^{change} \leq \frac {P^{max}_{charge}T_{s}}{C_{ESS}V_{ESS}}$$
+
+    $$ 0 \leq SOC_{j}^{+} \leq \frac {P^{max}_{charge}T_{s}}{C_{ESS}V_{ESS}}$$
+
+    $$ 0 \leq SOC_{j}^{-} \leq \frac {P^{max}_{discharge}T_{s}}{C_{ESS}V_{ESS}}$$
+    
+    $$SOC^{min} \leq SOC_{j} \leq SOC^{max}$$
+    
+    * constraint
+    $$ SOC_{j}^{change} = SOC_{j}^{+} - SOC_{j}^{-} $$
+
+    $$ SOC_{j}^{change} = \frac {P^{j}_{ESS}T_{s}}{C_{ESS}V_{ESS}} $$
+
+    $$ SOC_{j}^{change} =
+      \left\{ 
+        \begin{array}
+          rSOC_{j}^{+}, \qquad P_{ESS}^{j} > 0\\
+          SOC_{j}^{-}, \qquad P_{ESS}^{j} < 0
+        \end{array}
+      \right.
+      $$
+
+    $$ SOC_{j}^{+} \leq Z^{'} \frac{P_{charge}^{max}T_{s}}{C_{ESS}V_{ESS}}$$
+
+    $$ SOC_{j}^{-} \leq (1-Z^{'}) \frac{P_{discharge}^{max}T_{s}}{C_{ESS}V_{ESS}}$$
 
     $$SOC_{j-1} + \sum_{j=k}^{T-1} \frac{P^{j}_{ESS}T_{s}}{C_{ESS}V_{ESS}} \geq SOC^{threshold}$$
 
     $$SOC_{j} = SOC_{j-1} + \frac {P^{j}_{ESS}T_{s}}{C_{ESS}V_{ESS}}$$
+
+    $$ \sum_{j=0}^{T-1} SOC_{j}^{-} \geq 0.8$$
 
     <!-- * For GHEMS => LHEMS
     $$ P_{ESS}^{j} = \sum_{u=1}^{U} \beta_{u}^{j} P_{u,ESS}^{j} $$

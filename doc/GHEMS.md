@@ -53,3 +53,6 @@
 * insert_GHEMS_variable
     * Record CEMS enerage limit, due to `BaseParameter` is for HEMS
     
+* getPrevious_battery_dischargeSOC
+    * Calculate `ESS discharge SOC` amount until sample time
+    * Calculate `Total discharge SOC` amount for all day SOC, it's for preview, can be ignore

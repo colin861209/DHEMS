@@ -42,3 +42,8 @@
     * Uncontrollable load generate
     * random target 
         1. operation time
+
+* household_weighting
+    * Doing when **demand response**
+    * Each household decrease degree about Pgridmax
+    * Count current time block, so should run corresponsed time block same as the GHEMS time block
