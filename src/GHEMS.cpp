@@ -34,18 +34,19 @@ int dr_mode, dr_startTime, dr_endTime, dr_minDecrease_power, dr_feedback_price, 
 int Pgrid_flag, mu_grid_flag, Psell_flag, Pess_flag, Pfc_flag, SOC_change_flag;
 float delta_T = 0.0;
 float Cbat = 0.0, Vsys = 0.0, SOC_ini = 0.0, SOC_min = 0.0, SOC_max = 0.0, SOC_thres = 0.0, Pbat_min = 0.0, Pbat_max = 0.0, Pgrid_max = 0.0, Psell_max = 0.0, Delta_battery = 0.0, Pfc_max = 0.0, already_dischargeSOC;
-string weather;
 float step1_bill = 0.0, step1_sell = 0.0, step1_PESS = 0.0;
 vector<float> Pgrid_max_array;
 char column[400] = "A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21,A22,A23,A24,A25,A26,A27,A28,A29,A30,A31,A32,A33,A34,A35,A36,A37,A38,A39,A40,A41,A42,A43,A44,A45,A46,A47,A48,A49,A50,A51,A52,A53,A54,A55,A56,A57,A58,A59,A60,A61,A62,A63,A64,A65,A66,A67,A68,A69,A70,A71,A72,A73,A74,A75,A76,A77,A78,A79,A80,A81,A82,A83,A84,A85,A86,A87,A88,A89,A90,A91,A92,A93,A94,A95";
 int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name);
-void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2);
+float *getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather);
 void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption, float *real_sell_price, float *demandResponse_feedback, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_priceSum, float totalLoad_taipowerPriceSum, float demandResponse_feedbackSum);
 void optimization(vector<string> variable_name, float *load_model, float *price);
 void setting_GLPK_columnBoundary(vector<string> variable_name, glp_prob *mip);
 void calculateCostInfo(float *price);
 void insert_GHEMS_variable();
 float getPrevious_battery_dischargeSOC(int sample_time, string target_equip_name);
+float *get_allDay_price(string col_name);
+float *get_totalLoad_power(int uncontrollable_load_flag);
 
 int main(int argc, const char **argv)
 {
@@ -55,8 +56,6 @@ int main(int argc, const char **argv)
 	time_t t = time(NULL);
 	struct tm now_time = *localtime(&t);
 	int real_time = 0;
-
-	int *position = new int[16];
 
 	if ((mysql_real_connect(mysql_con, "140.124.42.65", "root", "fuzzy314", "DHEMS", 3306, NULL, 0)) == NULL)
 	{
@@ -71,9 +70,6 @@ int main(int argc, const char **argv)
 	}
 
 	Hydro_Price = value_receive("BaseParameter", "parameter_name", "hydrogen_price", 'F');
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'simulate_weather' ");
-	if (fetch_row_value() != -1)
-		weather = mysql_row[0];
 
 	// =-=-=-=-=-=-=- get parameter values from BaseParameter in need -=-=-=-=-=-=-= //
 	vector<float> parameter_tmp;
@@ -82,19 +78,6 @@ int main(int argc, const char **argv)
 	for (i = 8; i <= 17; i++)
 		parameter_tmp.push_back(value_receive("BaseParameter", "parameter_id", i, 'F'));
 	parameter_tmp.push_back(value_receive("BaseParameter", "parameter_name", "Global_real_time"));
-
-	// =-=-=-=-=-=-=- get demand response -=-=-=-=-=-=-= //
-	dr_mode = value_receive("BaseParameter", "parameter_name", "dr_mode");
-	messagePrint(__LINE__, "dr mode: ", 'I', dr_mode);
-	if (dr_mode != 0)
-	{
-		int *dr_info = demand_response_info(dr_mode);
-		dr_startTime = dr_info[0];
-		dr_endTime = dr_info[1];
-		dr_minDecrease_power = dr_info[2];
-		dr_feedback_price = dr_info[3];
-		dr_customer_baseLine = dr_info[4];
-	}
 
 	// =-=-=-=-=-=-=- we suppose that enerage appliance in community should same as the single appliance times household amount -=-=-=-=-=-=-= //
 	time_block = parameter_tmp[0];
@@ -114,6 +97,19 @@ int main(int argc, const char **argv)
 	delta_T = 1.0 / (float)divide;
 	point_num = 6;
 	piecewise_num = point_num - 1;
+
+	// =-=-=-=-=-=-=- get demand response -=-=-=-=-=-=-= //
+	dr_mode = value_receive("BaseParameter", "parameter_name", "dr_mode");
+	messagePrint(__LINE__, "dr mode: ", 'I', dr_mode);
+	if (dr_mode != 0)
+	{
+		int *dr_info = demand_response_info(dr_mode);
+		dr_startTime = dr_info[0];
+		dr_endTime = dr_info[1];
+		dr_minDecrease_power = dr_info[2];
+		dr_feedback_price = dr_info[3];
+		dr_customer_baseLine = dr_info[4];
+	}
 
 	// Choose resource be use in GHEMS
 	Pgrid_flag = flag_receive("GHEMS_flag", "Pgrid");
@@ -161,26 +157,11 @@ int main(int argc, const char **argv)
 	sample_time = value_receive("BaseParameter", "parameter_name", "Global_next_simulate_timeblock");
 
 	// =-=-=-=-=-=-=- get electric price data -=-=-=-=-=-=-= //
-	float *price = new float[time_block];
-	for (i = 0; i < time_block; i++)
-	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT price_value FROM price WHERE price_period = %d", i);
-		price[i] = turn_value_to_float(0);
-	}
+	float *price = get_allDay_price("price_value");
 
 	// =-=-=-=-=-=-=- get households' loads consumption from table 'totalLoad_model' & uncontrollable load from table 'LHEMS_uncontrollable_load' -=-=-=-=-=-=-= //
-	int uncontorllable_load_flag = value_receive("BaseParameter", "parameter_name", "uncontrollable_load_flag");
-	float *load_model = new float[time_block];
-	for (int i = 0; i < time_block; i++)
-	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT totalLoad FROM totalLoad_model WHERE time_block = %d", i);
-		load_model[i] = turn_value_to_float(0);
-		if (uncontorllable_load_flag == 1)
-		{
-			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT totalLoad FROM LHEMS_uncontrollable_load WHERE time_block = %d", i);
-			load_model[i] += turn_value_to_float(0);
-		}
-	}
+	int uncontrollable_load_flag = value_receive("BaseParameter", "parameter_name", "uncontrollable_load_flag");
+	float *load_model = get_totalLoad_power(uncontrollable_load_flag);
 
 	// =-=-=-=-=-=-=- return 1 after determine mode and get SOC -=-=-=-=-=-=-= //
 	real_time = determine_realTimeOrOneDayMode_andGetSOC(real_time, variable_name);
@@ -234,17 +215,8 @@ int main(int argc, const char **argv)
 void optimization(vector<string> variable_name, float *load_model, float *price)
 {
 	functionPrint(__func__);
-	time_t t = time(NULL);
-	struct tm now_time = *localtime(&t);
 
-	int noo;
-	if (((now_time.tm_min) % (60 / divide)) != 0)
-		noo = (now_time.tm_hour) * divide + (int)((now_time.tm_min) / (60 / divide)); //divide=4
-	else
-		noo = (now_time.tm_hour) * divide + (int)((now_time.tm_min) / (60 / divide));
-
-	messagePrint(__LINE__, "Now time block : ", 'I', noo, 'Y');
-
+	// =-=-=-=-=-=-=- Fuel Cell model setting and get piecewise data point -=-=-=-=-=-=-= //
 	int data_sampling = 101;
 	float *data_power = new float[data_sampling];
 	float *data_power_all = new float[data_sampling];
@@ -266,10 +238,6 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		data_power_all[i] = i * fc_power_interval / efficiency;
 	}
 
-	// P_power[0] = 0.0;
-	// P_power_all[0] = 0.0;
-	// messagePrint(__LINE__, "x_ is Pfc coeficient, y_ is Pfct coeficient", 'S', 0, 'Y');
-	// printf("\tLINE %d: x_0:%f  y_0:%f\n", __LINE__, P_power[0], P_power_all[0]);
 	for (j = 0; j < point_num; j++)
 	{
 		P_power[j] = data_power[j * 100 / piecewise_num];
@@ -278,8 +246,11 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 	}
 
 	// =-=-=-=-=-=-=- choose column 'big_sunny' 'sunny' 'cloudy' in table solar_data -=-=-=-=-=-=-= //
-	float *solar2 = new float[time_block];
-	getOrUpdate_SolarInfo_ThroughSampleTime(weather.c_str(), solar2);
+	string weather;
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'simulate_weather' ");
+	if (fetch_row_value() != -1)
+		weather = mysql_row[0];
+	float *solar2 = getOrUpdate_SolarInfo_ThroughSampleTime(weather.c_str());
 
 	printf("\n------ Starting GLPK Part ------\n");
 
@@ -311,9 +282,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max_array[i];
 			else
 				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max;
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, bnd_row_num + i, "");
 			glp_set_row_bnds(mip, bnd_row_num + i, GLP_UP, 0.0, 0.0);
 		}
@@ -326,9 +295,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		{
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Psell")] = 1.0;
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "mu_grid")] = Psell_max;
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, bnd_row_num + i, "");
 			glp_set_row_bnds(mip, bnd_row_num + i, GLP_UP, 0.0, Psell_max);
 		}
@@ -336,15 +303,13 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		bnd_row_num += (time_block - sample_time);
 		display_coefAndBnds_rowNum(coef_row_num, (time_block - sample_time), bnd_row_num, (time_block - sample_time));
 
-		// Psell j <= Pfc j + Ppv j		
+		// Psell j <= Pfc j + Ppv j
 		for (i = 0; i < (time_block - sample_time); i++)
 		{
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Psell")] = 1.0;
 			if (Pfc_flag == 1)
 				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pfc")] = -1.0;
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, bnd_row_num + i, "");
 			glp_set_row_bnds(mip, bnd_row_num + i, GLP_UP, 0.0, solar2[i - 1 + sample_time]);
 		}
@@ -360,14 +325,12 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 	}
 	glp_set_row_name(mip, bnd_row_num, "");
 	if (sample_time == 0)
-	{
 		glp_set_row_bnds(mip, bnd_row_num, GLP_LO, ((SOC_thres - SOC_ini) * Cbat * Vsys) / delta_T, 0.0);
-	}
+
 	else
-	{
-		// avoid the row max is bigger than SOC max
 		glp_set_row_bnds(mip, bnd_row_num, GLP_DB, ((SOC_thres - SOC_ini) * Cbat * Vsys) / delta_T, ((0.89 - SOC_ini) * Cbat * Vsys) / delta_T);
-	}
+	// avoid the row max is bigger than SOC max
+
 	coef_row_num += 1;
 	bnd_row_num += 1;
 	display_coefAndBnds_rowNum(coef_row_num, 1, bnd_row_num, 1);
@@ -378,12 +341,10 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 	{
 		for (j = 0; j <= i; j++)
 		{
-			coefficient[coef_row_num + i][j * variable + find_variableName_position(variable_name, "Pess")] = -1.0; // Pess
+			coefficient[coef_row_num + i][j * variable + find_variableName_position(variable_name, "Pess")] = -1.0;
 		}
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC")] = Cbat * Vsys / delta_T; //SOC
-	}
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC")] = Cbat * Vsys / delta_T;
+
 		glp_set_row_name(mip, (bnd_row_num + i), "");
 		glp_set_row_bnds(mip, (bnd_row_num + i), GLP_FX, (SOC_ini * Cbat * Vsys / delta_T), (SOC_ini * Cbat * Vsys / delta_T));
 	}
@@ -394,14 +355,15 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 	//(Balanced function) Pgrid j + Pfc j + Ppv j = sum(Pa j) + Pess j + Psell j
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pgrid")] = -1.0;
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
+		if (Pgrid_flag)
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pgrid")] = -1.0;
+		if (Pess_flag)
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
 		if (Pfc_flag == 1)
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pfc")] = -1.0;
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Psell")] = 1.0;
-	}
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
+		if (Psell_flag)
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Psell")] = 1.0;
+
 		glp_set_row_name(mip, (bnd_row_num + i), "");
 		if (solar2[i + sample_time] - load_model[i + sample_time] < 0)
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_FX, solar2[i + sample_time] - load_model[i + sample_time], solar2[i + sample_time] - load_model[i - 1 + sample_time]);
@@ -415,11 +377,9 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 	//(Charge limit) Pess + <= z * Pcharge max
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = 1.0; //Pess +
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Z")] = -Pbat_max; //Z
-	}
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = 1.0;
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Z")] = -Pbat_max;
+
 		glp_set_row_name(mip, (bnd_row_num + i), "");
 		glp_set_row_bnds(mip, (bnd_row_num + i), GLP_UP, 0.0, 0.0);
 	}
@@ -430,11 +390,9 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 	// (Discharge limit) Pess - <= (1 - z) * (Pdischarge max)
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0; //Pess -
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Z")] = Pbat_min;	   //Z
-	}
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0;
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Z")] = Pbat_min;
+
 		glp_set_row_name(mip, (bnd_row_num + i), "");
 		glp_set_row_bnds(mip, (bnd_row_num + i), GLP_UP, 0.0, Pbat_min);
 	}
@@ -442,16 +400,13 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 	bnd_row_num += (time_block - sample_time);
 	display_coefAndBnds_rowNum(coef_row_num, (time_block - sample_time), bnd_row_num, (time_block - sample_time));
 
-
 	// (Battery power) Pdischarge max <= Pess j <= Pcharge max
 	for (i = 0; i < (time_block - sample_time); i++)
 	{
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;	   //Pess
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = -1.0;   //Pess +
-		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0; //Pess -
-	}
-	for (i = 0; i < (time_block - sample_time); i++)
-	{
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pess")] = 1.0;
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pcharge")] = -1.0;
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pdischarge")] = 1.0;
+
 		glp_set_row_name(mip, (bnd_row_num + i), "");
 		glp_set_row_bnds(mip, (bnd_row_num + i), GLP_FX, 0.0, 0.0);
 	}
@@ -502,12 +457,10 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		//pfc=pfc_on+pfc_off
 		for (i = 0; i < (time_block - sample_time); i++)
 		{
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pfc")] = 1.0;		// Pfc
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcON")] = -1.0;	// Pfc_on
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcOFF")] = -1.0; // Pfc_off
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pfc")] = 1.0;
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcON")] = -1.0;
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcOFF")] = -1.0;
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_FX, 0.0, 0.0);
 		}
@@ -518,11 +471,9 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		//pfc_on<=ufc*Pfc_max
 		for (i = 0; i < (time_block - sample_time); i++)
 		{
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcON")] = 1.0;	   //Pfc_on    //Pfc_on<=ufc*Pfc_max
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "muFC")] = -Pfc_max; // ufc
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcON")] = 1.0;
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "muFC")] = -Pfc_max;
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_UP, 0.0, 0.0);
 		}
@@ -533,11 +484,9 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		//pfc_on>=ufc*pfc_min
 		for (i = 0; i < (time_block - sample_time); i++)
 		{
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcON")] = 1.0; //Pfc_on    //Pfc_on>=ufc*Pfc_min
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "muFC")] = -1.5; // ufc
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcON")] = 1.0;
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "muFC")] = -1.5;
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_LO, 0.0, 0.0);
 		}
@@ -548,11 +497,9 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		//pfc_off j<=(1-ufc)*pfc off
 		for (i = 0; i < (time_block - sample_time); i++)
 		{
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcOFF")] = 1.0; //Pfc_off    //Pfc_off<=ufc*0.000000001
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "muFC")] = 0.0;	//ufc
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "PfcOFF")] = 1.0;
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "muFC")] = 0.0;
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_UP, 0.0, 0.0);
 		}
@@ -563,16 +510,14 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		//pfc=x1z1+(x2-x1)s1......
 		for (i = 0; i < (time_block - sample_time); i++)
 		{
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pfc")] = 1.0; //Pfc j
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pfc")] = 1.0;
 
 			for (k = 1; k <= piecewise_num; k++) //X=z1*x1+(x2-x1)*s1...
 			{
-				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = -P_power[k - 1];							//z
-				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "lambda_Pfc" + to_string(k))] = -1.0 * (P_power[k] - P_power[k - 1]); //λ
+				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = -P_power[k - 1];
+				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "lambda_Pfc" + to_string(k))] = -1.0 * (P_power[k] - P_power[k - 1]);
 			}
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_UP, 0.0, 0.0);
 		}
@@ -583,16 +528,13 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		//pfc_tatol=y1z1+(y2-y1)s1......
 		for (i = 0; i < (time_block - sample_time); i++)
 		{
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pfct")] = 1.0; //Pfct j
-
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pfct")] = 1.0;
 			for (k = 1; k <= piecewise_num; k++) //Y=z1*y1+(y2-y1)*s1...
 			{
-				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = -P_power_all[k - 1];								//z
-				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "lambda_Pfc" + to_string(k))] = -1.0 * (P_power_all[k] - P_power_all[k - 1]); //λ
+				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = -P_power_all[k - 1];
+				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "lambda_Pfc" + to_string(k))] = -1.0 * (P_power_all[k] - P_power_all[k - 1]);
 			}
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_LO, 0.0, 0.0);
 		}
@@ -605,11 +547,9 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		{
 			for (k = 1; k <= piecewise_num; k++)
 			{
-				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = 1.0; //z       //z1+z2+z3+......=1
+				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = 1.0;
 			}
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_FX, 1.0, 1.0);
 		}
@@ -622,16 +562,11 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		{
 			for (k = 1; k <= piecewise_num; k++)
 			{
-				coefficient[coef_row_num + (time_block - sample_time) * k + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = -1.0;		 //z       //λi-zi  <=0
-				coefficient[coef_row_num + (time_block - sample_time) * k + i][i * variable + find_variableName_position(variable_name, "lambda_Pfc" + to_string(k))] = 1.0; //λ			
-			}
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
-			for (j = 1; j <= piecewise_num; j++) //s-z<=0
-			{
-				glp_set_row_name(mip, (bnd_row_num + (time_block - sample_time) * j + i), "");
-				glp_set_row_bnds(mip, (bnd_row_num + (time_block - sample_time) * j + i), GLP_UP, 0.0, 0.0);
+				coefficient[coef_row_num + (time_block - sample_time) * k + i][i * variable + find_variableName_position(variable_name, "zPfc" + to_string(k))] = -1.0;
+				coefficient[coef_row_num + (time_block - sample_time) * k + i][i * variable + find_variableName_position(variable_name, "lambda_Pfc" + to_string(k))] = 1.0;
+
+				glp_set_row_name(mip, (bnd_row_num + (time_block - sample_time) * k + i), "");
+				glp_set_row_bnds(mip, (bnd_row_num + (time_block - sample_time) * k + i), GLP_UP, 0.0, 0.0);
 			}
 		}
 		coef_row_num += (time_block - sample_time) * piecewise_num + (time_block - sample_time);
@@ -646,9 +581,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC_change")] = 1.0;
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC_increase")] = -1.0;
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC_decrease")] = 1.0;
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_FX, 0.0, 0.0);
 		}
@@ -660,9 +593,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		{
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC_increase")] = 1.0;
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC_Z")] = -((Pbat_max * delta_T) / (Cbat * Vsys));
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_UP, 0.0, 0.0);
 		}
@@ -674,9 +605,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		{
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC_decrease")] = 1.0;
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC_Z")] = ((Pbat_min * delta_T) / (Cbat * Vsys));
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_UP, 0.0, (Pbat_min * delta_T) / (Cbat * Vsys));
 		}
@@ -688,9 +617,7 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		{
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "SOC_change")] = 1.0;
 			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pess")] = -delta_T / (Cbat * Vsys);
-		}
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
+
 			glp_set_row_name(mip, (bnd_row_num + i), "");
 			glp_set_row_bnds(mip, (bnd_row_num + i), GLP_FX, 0.0, 0.0);
 		}
@@ -798,13 +725,6 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 
 	/*==============================��N?M?????????G???X==================================*/
 	float *s = new float[time_block];
-
-	//get now time that can used in the real experiment
-	if (((now_time.tm_min) % (60 / divide)) != 0)
-		noo = (now_time.tm_hour) * divide + (int)((now_time.tm_min) / (60 / divide));
-	else
-		noo = (now_time.tm_hour) * divide + (int)((now_time.tm_min) / (60 / divide));
-
 	for (i = 1; i <= variable; i++)
 	{
 		h = i;
@@ -997,10 +917,11 @@ int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> varia
 	return real_time;
 }
 
-void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2)
+float *getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather)
 {
 	functionPrint(__func__);
 	printf("\tWeather : %s\n", weather);
+	float *solar2 = new float[time_block];
 	if (sample_time == 0)
 	{
 		for (i = 0; i < time_block; i++)
@@ -1021,6 +942,7 @@ void getOrUpdate_SolarInfo_ThroughSampleTime(const char *weather, float *solar2)
 			solar2[i] = turn_value_to_float(0);
 		}
 	}
+	return solar2;
 }
 
 void updateTableCost(float *totalLoad, float *totalLoad_price, float *real_grid_pirce, float *fuelCell_kW_price, float *Hydrogen_g_consumption, float *real_sell_pirce, float *demandResponse_feedback, float totalLoad_sum, float totalLoad_priceSum, float real_grid_pirceSum, float fuelCell_kW_priceSum, float Hydrogen_g_consumptionSum, float real_sell_pirceSum, float totalLoad_taipowerPriceSum, float demandResponse_feedbackSum)
@@ -1304,4 +1226,33 @@ float getPrevious_battery_dischargeSOC(int sample_time, string target_equip_name
 	messagePrint(__LINE__, "Already discharge SOC from SOC = ", 'F', dischargeSOC, 'Y');
 	messagePrint(__LINE__, "Total discharge SOC from SOC = ", 'F', totaldischargeSOC, 'Y');
 	return dischargeSOC;
+}
+
+float *get_allDay_price(string col_name)
+{
+	float *price = new float[time_block];
+	for (int i = 0; i <= time_block; i++)
+	{
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT %s FROM price WHERE price_period = %d", col_name.c_str(), i);
+		price[i] = turn_value_to_float(0);
+	}
+	return price;
+}
+
+float *get_totalLoad_power(int uncontrollable_load_flag)
+{
+	functionPrint(__func__);
+	float *load_model = new float[time_block];
+	for (int i = 0; i < time_block; i++)
+	{
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT totalLoad FROM totalLoad_model WHERE time_block = %d", i);
+		load_model[i] = turn_value_to_float(0);
+		if (uncontrollable_load_flag == 1)
+		{
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT totalLoad FROM LHEMS_uncontrollable_load WHERE time_block = %d", i);
+			load_model[i] += turn_value_to_float(0);
+		}
+	}
+
+	return load_model;
 }
