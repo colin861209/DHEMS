@@ -177,7 +177,7 @@ int main(void)
 	float *price = new float[time_block];
 	for (i = 0; i < time_block; i++)
 	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT price_value FROM price WHERE price_period = %d", i);
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT summer_price FROM price WHERE price_period = %d", i);
 		price[i] = turn_value_to_float(0);
 	}
 

@@ -157,7 +157,7 @@ int main(int argc, const char **argv)
 	sample_time = value_receive("BaseParameter", "parameter_name", "Global_next_simulate_timeblock");
 
 	// =-=-=-=-=-=-=- get electric price data -=-=-=-=-=-=-= //
-	float *price = get_allDay_price("price_value");
+	float *price = get_allDay_price("summer_price");
 
 	// =-=-=-=-=-=-=- get households' loads consumption from table 'totalLoad_model' & uncontrollable load from table 'LHEMS_uncontrollable_load' -=-=-=-=-=-=-= //
 	int uncontrollable_load_flag = value_receive("BaseParameter", "parameter_name", "uncontrollable_load_flag");
@@ -272,24 +272,25 @@ void optimization(vector<string> variable_name, float *load_model, float *price)
 		for (n = 0; n < colTotal; n++)
 			coefficient[m][n] = 0.0;
 	}
-	if (mu_grid_flag)
+
+	// 0 < Pgrid j < μgrid j * Pgrid max
+	for (i = 0; i < (time_block - sample_time); i++)
 	{
-		// 0 < Pgrid j < μgrid j * Pgrid max
-		for (i = 0; i < (time_block - sample_time); i++)
-		{
-			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pgrid")] = 1.0;
-			if (dr_mode != 0)
-				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max_array[i];
-			else
-				coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max;
+		coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "Pgrid")] = 1.0;
+		if (dr_mode != 0)
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max_array[i];
+		else
+			coefficient[coef_row_num + i][i * variable + find_variableName_position(variable_name, "mu_grid")] = -Pgrid_max;
 
-			glp_set_row_name(mip, bnd_row_num + i, "");
-			glp_set_row_bnds(mip, bnd_row_num + i, GLP_UP, 0.0, 0.0);
-		}
-		coef_row_num += (time_block - sample_time);
-		bnd_row_num += (time_block - sample_time);
-		display_coefAndBnds_rowNum(coef_row_num, (time_block - sample_time), bnd_row_num, (time_block - sample_time));
+		glp_set_row_name(mip, bnd_row_num + i, "");
+		glp_set_row_bnds(mip, bnd_row_num + i, GLP_UP, 0.0, 0.0);
+	}
+	coef_row_num += (time_block - sample_time);
+	bnd_row_num += (time_block - sample_time);
+	display_coefAndBnds_rowNum(coef_row_num, (time_block - sample_time), bnd_row_num, (time_block - sample_time));
 
+	if (Psell_flag)
+	{
 		// Psell j < (1 - μgrid j) * Psell max
 		for (i = 0; i < (time_block - sample_time); i++)
 		{
