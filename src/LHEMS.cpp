@@ -174,10 +174,14 @@ int main(void)
 	sample_time = value_receive("BaseParameter", "parameter_name", "next_simulate_timeblock");
 
 	// =-=-=-=-=-=-=- get electric price data -=-=-=-=-=-=-= //
+	string simulate_price;
+	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'simulate_price' ");
+	if (fetch_row_value() != -1)
+		simulate_price = mysql_row[0];
 	float *price = new float[time_block];
 	for (i = 0; i < time_block; i++)
 	{
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT summer_price FROM price WHERE price_period = %d", i);
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT %s FROM price WHERE price_period = %d", simulate_price.c_str(), i);
 		price[i] = turn_value_to_float(0);
 	}
 
