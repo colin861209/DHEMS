@@ -1,5 +1,6 @@
 #!/bin/bash
-truncate -s 0 ~/how/DHEMS/log/*.log
+truncate -s 0 ~/how/DHEMS/log/LHEMS.log
+truncate -s 0 ~/how/DHEMS/log/GHEMS.log
 echo "#### RUN no dr LHEMS: grid, GHEMS: grid, sell, ess, fc ####"
 for i in {1..96}
 do
