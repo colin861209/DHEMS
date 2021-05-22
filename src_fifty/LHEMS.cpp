@@ -17,6 +17,7 @@ using namespace std;
 int h, i, j, k, m, n = 0;
 double z = 0;
 vector<string> variable_name;
+#define distributed_group_num 1;
 // base parameter
 int time_block = 0, variable = 0, divide = 0, sample_time = 0, householdTotal = 0, interrupt_num, uninterrupt_num, varying_num, app_count, household_id;
 int Pgrid_flag, Pess_flag, Pfc_flag, interruptLoad_flag, uninterruptLoad_flag, varyingLoad_flag;
@@ -24,34 +25,24 @@ int dr_mode, dr_startTime, dr_endTime, dr_minDecrease_power, dr_feedback_price, 
 float delta_T = 0.0;
 float Cbat = 0.0, Vsys = 0.0, SOC_ini = 0.0, SOC_min = 0.0, SOC_max = 0.0, SOC_thres = 0.0, Pbat_min = 0.0, Pbat_max = 0.0, Pgrid_max = 0.0, Psell_max;
 
-float step1_bill = 0.0, step1_sell = 0.0, step1_PESS = 0.0; //?�[?B?J?@?p??q?O
-
-int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name);
-void countUninterruptAndVaryingLoads_Flag(int *, int *, int);
-void countLoads_AlreadyOpenedTimes(int *, int);
-void count_interruptLoads_RemainOperateTime(int, int *, int *, int *);
-void count_uninterruptAndVaryingLoads_RemainOperateTime(int, int, int *, int *, int *, int *, int *);
-void init_VaryingLoads_OperateTimeAndPower(int **, float **, int *);
-void putValues_VaryingLoads_OperateTimeAndPower(int **varying_t_d, float **varying_p_d, int **varying_t_pow, float **varying_p_pow, int *varying_start, int *varying_end, float *varying_p_max);
-void optimization(vector<string> variable_name, int, int *, int *, int *, int *, float *, int *, int *, int *, int *, float *, int *, int *, int *, int *, int *, int *, int **, float **, int, float *, float *);
-void update_loadModel(float *, float *, int);
-float *rand_operationTime();
-float *household_weighting();
-
 int main(void)
 {
-	time_t t = time(NULL);
-	struct tm now_time = *localtime(&t);
-	int real_time = 0;
+	if (!connect_mysql("DHEMS_fiftyHousehold"))
+        messagePrint(__LINE__, "Failed to Connect MySQL");
+    else
+        messagePrint(__LINE__, "Success to Connect MySQL");
 
-	if ((mysql_real_connect(mysql_con, "140.124.42.65", "root", "fuzzy314", "DHEMS_fiftyHousehold", 3306, NULL, 0)) == NULL)
+	// =-=-=-=-=-=-=- determine which mode and get SOC if in need -=-=-=-=-=-=-= //
+	int real_time = value_receive("BaseParameter", "parameter_name", "real_time");
+	sample_time = value_receive("BaseParameter", "parameter_name", "next_simulate_timeblock");
+	real_time = determine_realTimeOrOneDayMode_andGetSOC(real_time, variable_name);
+	if ((sample_time + 1) == 97)
 	{
-		printf("Failed to connect to Mysql!\n");
-		system("pause");
-		return 0;
+		messagePrint(__LINE__, "Time block to the end !!");
+		exit(0);
 	}
-	printf("Connect to Mysql sucess!!\n");
-	mysql_set_character_set(mysql_con, "utf8");
+
+	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
 
 	// =-=-=-=-=-=-=- get BaseParameter values -=-=-=-=-=-=-= //
 	float *base_par = new float[3 + 7];
@@ -62,26 +53,8 @@ int main(void)
 	for (i = 8; i <= 14; i++)
 		base_par[i - 5] = value_receive("BaseParameter", "parameter_id", i, 'F');
 
-	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value from BaseParameter where parameter_name = 'lastTime_execute' ");
-	fetch_row_value();
-	s_time = mysql_row[0];
-
-	char *token = strtok(s_time, "-");
-	vector<int> time_tmp;
-	while (token != NULL)
-	{
-		time_tmp.push_back(atoi(token));
-		token = strtok(NULL, "-");
-	}
-
-	// not the same day real_time = 0
-	if ((time_tmp[0] != (now_time.tm_year + 1900)) || (time_tmp[1] != (now_time.tm_mon + 1)) || (time_tmp[2] != (now_time.tm_mday)))
-		real_time = 0;
-	time_tmp.clear();
-
 	time_block = base_par[0];
-	householdTotal = base_par[1];
-	variable = base_par[2];
+	householdTotal = base_par[1] / base_par[2];
 	Vsys = base_par[3];
 	Cbat = base_par[4];
 	SOC_min = base_par[5];
@@ -93,7 +66,6 @@ int main(void)
 	delta_T = 1.0 / (float)divide;
 
 	Pgrid_max = value_receive("BaseParameter", "parameter_name", "Pgridmax", 'F');
-	real_time = value_receive("BaseParameter", "parameter_name", "real_time");
 	household_id = value_receive("BaseParameter", "parameter_name", "household_id");
 
 	// =-=-=-=-=-=-=- get load_list loads category's amount -=-=-=-=-=-=-= //
@@ -168,9 +140,6 @@ int main(void)
 	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `BaseParameter` SET value = %d WHERE `BaseParameter`.`parameter_name` = 'local_variable_num' ", variable);
 	sent_query();
 
-	// =-=-=-=-=-=-=- Get simulation time slot -=-=-=-=-=-=-= //
-	sample_time = value_receive("BaseParameter", "parameter_name", "next_simulate_timeblock");
-
 	// =-=-=-=-=-=-=- get electric price data -=-=-=-=-=-=-= //
 	string simulate_price;
 	snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'simulate_price' ");
@@ -182,22 +151,6 @@ int main(void)
 		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT %s FROM price WHERE price_period = %d", simulate_price.c_str(), i);
 		price[i] = turn_value_to_float(0);
 	}
-
-	// =-=-=-=-=-=-=- determine which mode and get SOC if in need -=-=-=-=-=-=-= //
-	real_time = determine_realTimeOrOneDayMode_andGetSOC(real_time, variable_name);
-	if ((sample_time + 1) == 97)
-	{
-		messagePrint(__LINE__, "Time block to the end !!");
-		exit(0);
-	}
-
-	// =-=-=-=-=-=-=- Update date is necesssary in real experience -=-=-=-=-=-=-= //
-	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = '%d-%02d-%02d' WHERE parameter_name = 'lastTime_execute' ", now_time.tm_year + 1900, now_time.tm_mon + 1, now_time.tm_mday);
-	sent_query();
-
-	// =-=-=-=-=-=-=- the time slot which send to GLPK -=-=-=-=-=-=-= //
-	sample_time = value_receive("BaseParameter", "parameter_name", "next_simulate_timeblock");
-	messagePrint(__LINE__, "sample time from database = ", 'I', sample_time);
 
 	float *uncontrollable_load = rand_operationTime();
 	// =-=-=-=-=-=-=- initial total load table -=-=-=-=-=-=-= //
@@ -211,8 +164,6 @@ int main(void)
 		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `totalLoad` = '0' ");
 		sent_query();
 	}
-
-	// =-=-=-=-=-=-=- becuase have five household, so will run GLPK five times -=-=-=-=-=-=-= //
 
 	// =-=-=-=-=-=-=- get each hosueholds' loads info -=-=-=-=-=-=-= //
 	int *interrupt_start = new int[interrupt_num];
@@ -235,6 +186,8 @@ int main(void)
 	int **varying_t_pow = NEW2D(varying_num, 3, int);
 	float **varying_p_pow = NEW2D(varying_num, 3, float);
 	int *varying_flag = new int[varying_num];
+	char *token = strtok(s_time, "-");
+	vector<int> time_tmp;
 	for (int i = 0; i < interrupt_num; i++)
 	{
 		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d_startEndOperationTime FROM load_list WHERE group_id = 1 and number = %d", household_id, i + 1);
@@ -323,6 +276,3 @@ int main(void)
 	mysql_close(mysql_con);
 	return 0;
 }
-
-// ---------------------------------------------------------------------------------------------------------------------------------------------------- GLPK ---------------------------------------------------------------------------------------------------------------------------------------------------- //
-

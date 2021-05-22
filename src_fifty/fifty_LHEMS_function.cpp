@@ -14,18 +14,6 @@ char column[400] = "A0,A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A1
 void optimization(vector<string> variable_name, int household_id, int *interrupt_start, int *interrupt_end, int *interrupt_ot, int *interrupt_reot, float *interrupt_p, int *uninterrupt_start, int *uninterrupt_end, int *uninterrupt_ot, int *uninterrupt_reot, float *uninterrupt_p, int *uninterrupt_flag, int *varying_start, int *varying_end, int *varying_ot, int *varying_reot, int *varying_flag, int **varying_t_pow, float **varying_p_pow, int app_count, float *price, float *uncontrollable_load)
 {
 	functionPrint(__func__);
-	time_t t = time(NULL);
-	struct tm now_time = *localtime(&t);
-
-	// 'noo' is timeblock which determine to control each loads opened or closed.
-	//get now time that can used in the real experiment
-	int noo;
-	if (((now_time.tm_min) % (60 / divide)) != 0)
-		noo = (now_time.tm_hour) * divide + (int)((now_time.tm_min) / (60 / divide));
-	else
-		noo = (now_time.tm_hour) * divide + (int)((now_time.tm_min) / (60 / divide));
-
-	messagePrint(__LINE__, "Now time block : ", 'I', noo, 'Y');
 
 	countUninterruptAndVaryingLoads_Flag(uninterrupt_flag, varying_flag, household_id);
 
@@ -793,12 +781,6 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	int l = 0;
 	float *s = new float[time_block];
 
-	//get now time that can used in the real experiment
-	if (((now_time.tm_min) % (60 / divide)) != 0)
-		noo = (now_time.tm_hour) * divide + (int)((now_time.tm_min) / (60 / divide));
-	else
-		noo = (now_time.tm_hour) * divide + (int)((now_time.tm_min) / (60 / divide));
-
 	for (i = 1; i <= variable; i++)
 	{
 		h = i;
@@ -857,57 +839,6 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 			snprintf(sql_buffer, sizeof(sql_buffer), "INSERT INTO LHEMS_real_status (%s, equip_name, household_id) VALUES('%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%.3f','%s', '%d');", column, s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7], s[8], s[9], s[10], s[11], s[12], s[13], s[14], s[15], s[16], s[17], s[18], s[19], s[20], s[21], s[22], s[23], s[24], s[25], s[26], s[27], s[28], s[29], s[30], s[31], s[32], s[33], s[34], s[35], s[36], s[37], s[38], s[39], s[40], s[41], s[42], s[43], s[44], s[45], s[46], s[47], s[48], s[49], s[50], s[51], s[52], s[53], s[54], s[55], s[56], s[57], s[58], s[59], s[60], s[61], s[62], s[63], s[64], s[65], s[66], s[67], s[68], s[69], s[70], s[71], s[72], s[73], s[74], s[75], s[76], s[77], s[78], s[79], s[80], s[81], s[82], s[83], s[84], s[85], s[86], s[87], s[88], s[89], s[90], s[91], s[92], s[93], s[94], s[95], variable_name[i - 1].c_str(), household_id);
 			sent_query();
 		}
-	}
-
-	float now_grid[time_block] = {0.0}, varying_grid[time_block] = {0.0}, cost[time_block] = {0.0};
-	float now_power_result = 0.0, var_grid_result = 0.0, opt_cost_result = 0.0, price_sum_now_power = 0.0;
-	// float sell[time_block] = {0.0}, opt_sell_result = 0.0 ;
-	float FC_cost[time_block] = {0.0}, Hydrogen_com[time_block] = {0.0}, FC_every_cost[time_block] = {0.0};
-	float opt_FC_cost_result = 0.0, opt_Hydrogen_result = 0.0;
-
-	// the total loads power(now_grid) and cost by grid(varying_grid) from 'sample time' to the 'end time (96)'
-	// sum all now_grid(now_power_result) and sum all varying_grid(var_grid_result) from 'sample time' to the 'end time (96)'
-	//get all_grid cost(use the time varing price)
-	for (j = 0; j < (time_block - sample_time); j++)
-	{
-		// for (i = 1; i < (app_count + 1); i++)
-		// {
-		// 	if (i < (interrupt_num + 1))
-		// 	{
-		// 		h = i + variable * j;
-		// 		s[j] = glp_mip_col_val(mip, h);
-		// 		now_grid[j + sample_time] += (s[j]) * interrupt_p[i - 1] * delta_T;
-		// 		varying_grid[j + sample_time] += (s[j]) * interrupt_p[i - 1] * price[j + sample_time] * delta_T;
-		// 	}
-		// 	else if (i >= (interrupt_num + 1) && i < (interrupt_num + uninterrupt_num + 1))
-		// 	{
-		// 		h = i + variable * j;
-		// 		s[j] = glp_mip_col_val(mip, h);
-		// 		now_grid[j + sample_time] += (s[j]) * uninterrupt_p[i - 1 - interrupt_num] * delta_T;
-		// 		varying_grid[j + sample_time] += (s[j]) * uninterrupt_p[i - 1 - interrupt_num] * price[j + sample_time] * delta_T;
-		// 	}
-		// 	else if (i >= (interrupt_num + uninterrupt_num + 1) && i < (interrupt_num + uninterrupt_num + varying_num + 1))
-		// 	{
-		// 		k = variable;
-		// 		s[j] = glp_mip_col_val(mip, k);
-		// 		now_grid[j + sample_time] += (float)(glp_mip_col_val(mip, i + variable * j)) * s[j] * delta_T;
-		// 		varying_grid[j + sample_time] += (float)(glp_mip_col_val(mip, i + variable * j)) * s[j] * price[j + sample_time] * delta_T;
-		// 	}
-		// }
-
-		now_power_result += now_grid[j + sample_time];	  //now_power_result¡÷ just all the comsumption energy(for no varying price and coculate leter).
-		var_grid_result += varying_grid[j + sample_time]; //var_power_result¡÷ comsumption energy*price.
-	}
-
-	// buy how much grid (cost) from 'sample time' to the 'end time (96)'
-	// sum all cost(opt_cost_result) from 'sample time' to the 'end time (96)'
-	h = find_variableName_position(variable_name, "Pgrid") + 1; //cost
-	for (j = 0; j < (time_block - sample_time); j++)
-	{
-		s[j] = glp_mip_col_val(mip, h);
-		cost[j + sample_time] = s[j] * price[j + sample_time] * delta_T;
-		opt_cost_result += cost[j + sample_time];
-		h = (h + variable);
 	}
 
 	glp_delete_prob(mip);
@@ -1255,8 +1186,7 @@ float *rand_operationTime()
 	for (int i = 0; i < time_block; i++)
 		result[i] = 0.0;
 
-	int uncontrollable_load_flag = value_receive("BaseParameter", "parameter_name", "uncontrollable_load_flag");
-	if (uncontrollable_load_flag == 0)
+	if (!value_receive("BaseParameter", "parameter_name", "uncontrollable_load_flag"))
 	{
 		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `household%d` = '0.0' ", household_id);
 		sent_query();
@@ -1391,4 +1321,18 @@ float *household_weighting()
 	}
 
 	return result;
+}
+
+int connect_mysql(string DB_name)
+{
+
+    if ((mysql_real_connect(mysql_con, "140.124.42.65", "root", "fuzzy314", DB_name.c_str(), 3306, NULL, 0)) == NULL)
+    {
+        return -1;
+    }
+    else
+    {
+        mysql_set_character_set(mysql_con, "utf8");
+        return 1;
+    }
 }

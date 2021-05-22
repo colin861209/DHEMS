@@ -10,6 +10,7 @@ extern int time_block, sample_time, divide, interrupt_num, uninterrupt_num, vary
 extern float Cbat, Vsys, SOC_ini, SOC_min, SOC_max, SOC_thres, Pbat_min, Pbat_max, Pgrid_max, Psell_max, delta_T;
 extern int household_id, householdTotal;
 
+int connect_mysql(string DB_name);
 int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name);
 void countUninterruptAndVaryingLoads_Flag(int *uninterrupt_flag, int *varying_flag, int household_id);
 void countLoads_AlreadyOpenedTimes(int *buff, int household_id);
