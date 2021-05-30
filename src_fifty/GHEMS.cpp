@@ -75,7 +75,7 @@ int main(int argc, const char **argv)
 	vector<float> parameter_tmp;
 	parameter_tmp.push_back(value_receive("BaseParameter", "parameter_name", "time_block", 'F'));
 	parameter_tmp.push_back(value_receive("BaseParameter", "parameter_name", "householdAmount", 'F'));
-	for (i = 8; i <= 17; i++)
+	for (i = 9; i <= 18; i++)
 		parameter_tmp.push_back(value_receive("BaseParameter", "parameter_id", i, 'F'));
 	parameter_tmp.push_back(value_receive("BaseParameter", "parameter_name", "Global_real_time"));
 

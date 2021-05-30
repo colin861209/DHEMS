@@ -1,8 +1,7 @@
 build/**/*
 log/**/*
+log_fifty/**/*
 experiment/**/*
 .vscode
 auo.csv
-auo_src/experiment.cpp
-auo_src/history.cpp
-auo_src/energyDeployment.cpp
+auo_src/**/*

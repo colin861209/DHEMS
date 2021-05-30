@@ -50,11 +50,11 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	/*============================(GLPK matrix row & col definition)==================================*/
 	int rowTotal = (time_block - sample_time) * 200 + 1;
 	int colTotal = variable * (time_block - sample_time);
-
+	string prob_name = "LHEMS" + household_id;
 	/*=============================(GLPK variable definition)=====================================*/
 	glp_prob *mip;
 	mip = glp_create_prob();
-	glp_set_prob_name(mip, "LHEMS");
+	glp_set_prob_name(mip, prob_name.c_str());
 	glp_set_obj_dir(mip, GLP_MIN); //�̤p�ƥιq��O
 	glp_add_rows(mip, rowTotal);
 	glp_add_cols(mip, colTotal);
@@ -769,7 +769,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	printf("\n");
 	printf("LINE %d: timeblock %d household id %d sol = %f; \n", __LINE__, sample_time, household_id, z);
 
-	if (z == 0.0 && glp_mip_col_val(mip, find_variableName_position(variable_name, "SOC") + 1) == 0.0)
+	if (z == 0.0 /*&& glp_mip_col_val(mip, find_variableName_position(variable_name, "SOC") + 1) == 0.0*/)
 	{
 		printf("Error > sol is 0, No Solution, give up the solution\n");
 		printf("%.2f\n", glp_mip_col_val(mip, find_variableName_position(variable_name, "Pgrid") + 1));
@@ -847,7 +847,7 @@ void optimization(vector<string> variable_name, int household_id, int *interrupt
 	return;
 }
 
-int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name)
+int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> variable_name, int distributed_group_num)
 {
 	// 'Realtime mode' if same day & real time = 1;
 	// 'One day mode' =>
@@ -858,9 +858,9 @@ int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> varia
 	{
 		messagePrint(__LINE__, "Real Time Mode...", 'S', 0, 'Y');
 
-		if (household_id == 1)
+		if (truncate_table_flag())
 		{
-			snprintf(sql_buffer, sizeof(sql_buffer), "TRUNCATE TABLE LHEMS_real_status"); //clean LHEMS_real_status;
+			snprintf(sql_buffer, sizeof(sql_buffer), "TRUNCATE TABLE LHEMS_real_status");
 			sent_query();
 		}
 
@@ -874,26 +874,36 @@ int determine_realTimeOrOneDayMode_andGetSOC(int real_time, vector<string> varia
 	}
 	else
 	{
-		if (household_id == 1)
+		if (truncate_table_flag())
 		{
 			snprintf(sql_buffer, sizeof(sql_buffer), "TRUNCATE TABLE LHEMS_control_status");
 			sent_query();
 			snprintf(sql_buffer, sizeof(sql_buffer), "TRUNCATE TABLE LHEMS_real_status");
 			sent_query();
+			update_distributed_group("real_time", 0, "group_id", distributed_group_num);
 			sample_time = 0;
-			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %d WHERE parameter_name = 'next_simulate_timeblock' ", sample_time);
-			sent_query();
+			update_distributed_group("next_simulate_timeblock", sample_time, "group_id", distributed_group_num);
+			messagePrint(__LINE__, "truncate LHEMS control status", 'S', 0, 'Y');
 		}
 
-		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'ini_SOC'"); //get ini_SOC
-		SOC_ini = turn_value_to_float(0);
-		messagePrint(__LINE__, "ini_SOC : ", 'F', SOC_ini, 'Y');
-
-		if (household_id == householdTotal)
+		if (Pess_flag)
 		{
-			real_time = 1; //if you don't want do real_time,please commend it.
-			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %d WHERE parameter_name = 'real_time' ", real_time);
-			sent_query();
+			snprintf(sql_buffer, sizeof(sql_buffer), "SELECT value FROM BaseParameter WHERE parameter_name = 'ini_SOC'"); //get ini_SOC
+			SOC_ini = turn_value_to_float(0);
+			messagePrint(__LINE__, "ini_SOC : ", 'F', SOC_ini, 'Y');
+		}
+
+		if (distributed_household_id == distributed_householdTotal)
+		{
+			real_time = 1;
+			update_distributed_group("real_time", real_time, "group_id", distributed_group_num);
+			messagePrint(__LINE__, "real time = 1 in group id ", 'I', distributed_group_num, 'Y');
+			if (get_distributed_group("COUNT(group_id) = SUM(real_time)"))
+			{
+				snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE BaseParameter SET value = %d WHERE parameter_name = 'real_time' ", real_time);
+				sent_query();
+				messagePrint(__LINE__, "BaseParameter real time => ", 'I', real_time, 'Y');
+			}
 		}
 	}
 
@@ -1121,7 +1131,7 @@ void putValues_VaryingLoads_OperateTimeAndPower(int **varying_t_d, float **varyi
 	// }
 }
 
-void update_loadModel(float *interrupt_p, float *uninterrupt_p, int household_id)
+void update_loadModel(float *interrupt_p, float *uninterrupt_p, int household_id, int distributed_group_num)
 {
 	functionPrint(__func__);
 	float *power_tmp = new float[time_block - sample_time];
@@ -1161,36 +1171,41 @@ void update_loadModel(float *interrupt_p, float *uninterrupt_p, int household_id
 		sent_query();
 	}
 	// =-=-=-=-=-=-=- Caculate for total load model -=-=-=-=-=-=-= //
-	if (household_id == householdTotal)
+	if (distributed_household_id == distributed_householdTotal)
 	{
-		for (int i = 1; i < householdTotal; i++)
+		update_distributed_group("total_load_flag", 1, "group_id", distributed_group_num);
+		if (get_distributed_group("COUNT(group_id) = SUM(total_load_flag)"))
 		{
-			for (int j = sample_time; j < time_block; j++)
+			for (int i = 1; i < householdTotal; i++)
 			{
-				snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM totalLoad_model WHERE time_block = %d", i, j);
-				power_tmp[j - sample_time] += turn_value_to_float(0);
+				for (int j = sample_time; j < time_block; j++)
+				{
+					snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM totalLoad_model WHERE time_block = %d", i, j);
+					power_tmp[j - sample_time] += turn_value_to_float(0);
+				}
 			}
-		}
-		for (int i = sample_time; i < time_block; i++)
-		{
-			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `totalLoad` = '%.3f', `time` = CURRENT_TIMESTAMP WHERE `totalLoad_model`.`time_block` = %d;", power_tmp[i - sample_time], i);
-			sent_query();
+			for (int i = sample_time; i < time_block; i++)
+			{
+				snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `totalLoad` = '%.3f', `time` = CURRENT_TIMESTAMP WHERE `totalLoad_model`.`time_block` = %d;", power_tmp[i - sample_time], i);
+				sent_query();
+			}
 		}
 	}
 }
 
-float *rand_operationTime()
+float *rand_operationTime(int distributed_group_num)
 {
 	functionPrint(__func__);
 	float *result = new float[time_block];
 	for (int i = 0; i < time_block; i++)
 		result[i] = 0.0;
 
-	if (!value_receive("BaseParameter", "parameter_name", "uncontrollable_load_flag"))
+	if (value_receive("BaseParameter", "parameter_name", "uncontrollable_load_flag") == 0)
 	{
+		update_distributed_group("uncontrollable_load_flag", 0, "group_id", distributed_group_num);
 		snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `household%d` = '0.0' ", household_id);
 		sent_query();
-		if (household_id == householdTotal)
+		if (distributed_household_id == distributed_householdTotal)
 		{
 			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `totalLoad` = '0.0' ");
 			sent_query();
@@ -1236,18 +1251,22 @@ float *rand_operationTime()
 			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `household%d` = '%.1f' WHERE `time_block` = %d;", household_id, result[i], i);
 			sent_query();
 		}
-		if (household_id == householdTotal)
+		if (distributed_household_id == distributed_householdTotal)
 		{
-			for (int j = 0; j < time_block; j++)
+			update_distributed_group("uncontrollable_load_flag", 1, "group_id", distributed_group_num);
+			if (get_distributed_group("COUNT(group_id) = SUM(uncontrollable_load_flag)"))
 			{
-				float power_total = 0.0;
-				for (int i = 1; i <= householdTotal; i++)
+				for (int j = 0; j < time_block; j++)
 				{
-					snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM `LHEMS_uncontrollable_load` WHERE time_block = %d", i, j);
-					power_total += turn_value_to_float(0);
+					float power_total = 0.0;
+					for (int i = 1; i <= distributed_householdTotal; i++)
+					{
+						snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM `LHEMS_uncontrollable_load` WHERE time_block = %d", i, j);
+						power_total += turn_value_to_float(0);
+					}
+					snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `totalLoad` = '%.1f' WHERE `time_block` = %d;", power_total, j);
+					sent_query();
 				}
-				snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `LHEMS_uncontrollable_load` SET `totalLoad` = '%.1f' WHERE `time_block` = %d;", power_total, j);
-				sent_query();
 			}
 		}
 	}
@@ -1323,16 +1342,61 @@ float *household_weighting()
 	return result;
 }
 
+void init_totalLoad_flag_and_table(int distributed_group_num)
+{
+	// init totalLoad table
+	if (distributed_household_id == 1)
+	{
+		update_distributed_group("total_load_flag", 0, "group_id", distributed_group_num);
+		if (sample_time == 0)
+		{
+			for (int i = 1; i <= distributed_householdTotal; i++)
+			{
+				snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `household%d` = '0' ", (distributed_group_num - 1) * distributed_householdTotal + i);
+				sent_query();
+			}
+			snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `totalLoad` = '0' ");
+			sent_query();
+		}
+	}
+}
+int truncate_table_flag()
+{
+	// household id = 1 in every sample time,
+	// otherwise if any group finish each household optimize, we don't truncate table
+	int result = 0;
+	result = get_distributed_group("COUNT(group_id) = SUM(household_id)");
+	if (result)
+		return result;
+	else
+		return 0;
+}
+
 int connect_mysql(string DB_name)
 {
+	if ((mysql_real_connect(mysql_con, "140.124.42.65", "root", "fuzzy314", DB_name.c_str(), 3306, NULL, 0)) == NULL)
+	{
+		return -1;
+	}
+	else
+	{
+		mysql_set_character_set(mysql_con, "utf8");
+		return 1;
+	}
+}
 
-    if ((mysql_real_connect(mysql_con, "140.124.42.65", "root", "fuzzy314", DB_name.c_str(), 3306, NULL, 0)) == NULL)
-    {
-        return -1;
-    }
-    else
-    {
-        mysql_set_character_set(mysql_con, "utf8");
-        return 1;
-    }
+int get_distributed_group(string target, string condition_col, int condition_num)
+{
+	if (condition_col.empty() && condition_num == -1)
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT %s FROM `distributed_group` ", target.c_str());
+	else
+		snprintf(sql_buffer, sizeof(sql_buffer), "SELECT %s FROM `distributed_group` WHERE %s = %d", target.c_str(), condition_col.c_str(), condition_num);
+
+	return turn_value_to_int(0);
+}
+
+void update_distributed_group(string target, int target_value, string condition_col, int condition_num)
+{
+	snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `distributed_group` SET `%s` = '%d' WHERE `%s` = %d;", target.c_str(), target_value, condition_col.c_str(), condition_num);
+	sent_query();
 }
