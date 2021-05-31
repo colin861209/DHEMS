@@ -93,9 +93,13 @@
 
 + Commit link [b521f06](https://github.com/colin861209/DHEMS/commit/b521f06e8e32a59f50202050b66bbd372768a575)
 + Commit link [4932911](https://github.com/colin861209/DHEMS/commit/49329115b37a529a1cb51d6cb6d538b30c7d6a29)
++ HotFix Commit link [d5f22d6](https://github.com/colin861209/DHEMS/commit/d5f22d6a4edd8963f3fdc9c8fd6a073b88aa0828)
 
 * Content: 50 household 
 	* 10 code parallel process run 5 time in one time step
 	* Table `distributed_group` record each group flag individual and update to table `BaseParameter` if condition is established
+* HotFix: function `update_loadModel`
+	* Origin: power_tmp collect `current household`(5) power and then add `1 ~ householdTotal-1` (1 ~ 4) household's power
+	* Now: Select all household total power from `0~96` timeblock, but can change from `sample_time~96` timeblock
 
 * **NOTE**: `demand response` & `uncontrollable load` not test yet
