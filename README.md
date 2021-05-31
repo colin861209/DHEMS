@@ -98,4 +98,4 @@
 	* 10 code parallel process run 5 time in one time step
 	* Table `distributed_group` record each group flag individual and update to table `BaseParameter` if condition is established
 
-* **NOTE** `demand response` & `uncontrollable load` not test yet
+* **NOTE**: `demand response` & `uncontrollable load` not test yet
