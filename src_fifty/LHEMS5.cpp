@@ -17,7 +17,7 @@ using namespace std;
 int h, i, j, k, m, n = 0;
 double z = 0;
 vector<string> variable_name;
-#define distributed_group_num 1
+#define distributed_group_num 5
 // base parameter
 int time_block = 0, variable = 0, divide = 0, sample_time = 0, distributed_householdTotal = 0, interrupt_num, uninterrupt_num, varying_num, app_count, distributed_household_id, household_id, householdTotal;
 int Pgrid_flag, Pess_flag, Pfc_flag, interruptLoad_flag, uninterruptLoad_flag, varyingLoad_flag;

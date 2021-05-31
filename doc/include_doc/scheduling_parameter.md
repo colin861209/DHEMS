@@ -1,6 +1,6 @@
 # scheduling_parameter
 
-* display_coefAndBnds_rowNum
+> `display_coefAndBnds_rowNum`
   * Purpose: Display row number
   * How To Use (temporary)
     * After `coef_row_num` & `bnd_row_num` accumulate
