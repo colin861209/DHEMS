@@ -1259,7 +1259,7 @@ float *rand_operationTime(int distributed_group_num)
 				for (int j = 0; j < time_block; j++)
 				{
 					float power_total = 0.0;
-					for (int i = 1; i <= distributed_householdTotal; i++)
+					for (int i = 1; i <= householdTotal; i++)
 					{
 						snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM `LHEMS_uncontrollable_load` WHERE time_block = %d", i, j);
 						power_total += turn_value_to_float(0);
