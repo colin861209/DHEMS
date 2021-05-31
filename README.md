@@ -89,4 +89,11 @@
     3. Add for loop execute number after for loop `ex: coef_row_num += 96`
 
 ---
+## 2021/05/31
 
++ Commit link [b521f06](https://github.com/colin861209/DHEMS/commit/b521f06e8e32a59f50202050b66bbd372768a575)
++ Commit link [4932911](https://github.com/colin861209/DHEMS/commit/49329115b37a529a1cb51d6cb6d538b30c7d6a29)
+
+* Content: 50 household 
+	* 10 code parallel process run 5 time in one time step
+	* Table `distributed_group` record each group flag individual and update to table `BaseParameter` if condition is established
