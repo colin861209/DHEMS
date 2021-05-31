@@ -1176,17 +1176,15 @@ void update_loadModel(float *interrupt_p, float *uninterrupt_p, int household_id
 		update_distributed_group("total_load_flag", 1, "group_id", distributed_group_num);
 		if (get_distributed_group("COUNT(group_id) = SUM(total_load_flag)"))
 		{
-			for (int i = 1; i < householdTotal; i++)
+			for (int j = 0; j < time_block; j++)
 			{
-				for (int j = sample_time; j < time_block; j++)
+				float power_total = 0.0;
+				for (int i = 1; i <= householdTotal; i++)
 				{
 					snprintf(sql_buffer, sizeof(sql_buffer), "SELECT household%d FROM totalLoad_model WHERE time_block = %d", i, j);
-					power_tmp[j - sample_time] += turn_value_to_float(0);
+					power_total += turn_value_to_float(0);
 				}
-			}
-			for (int i = sample_time; i < time_block; i++)
-			{
-				snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `totalLoad` = '%.3f', `time` = CURRENT_TIMESTAMP WHERE `totalLoad_model`.`time_block` = %d;", power_tmp[i - sample_time], i);
+				snprintf(sql_buffer, sizeof(sql_buffer), "UPDATE `totalLoad_model` SET `totalLoad` = '%.3f', `time` = CURRENT_TIMESTAMP WHERE `totalLoad_model`.`time_block` = %d;", power_total, j);
 				sent_query();
 			}
 		}
