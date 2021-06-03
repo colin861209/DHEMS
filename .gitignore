@@ -5,3 +5,5 @@ experiment/**/*
 .vscode
 auo.csv
 auo_src/**/*
+src_fifty/**/*
+include/fifty_LHEMS_function.hpp
