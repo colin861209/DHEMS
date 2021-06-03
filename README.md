@@ -103,3 +103,5 @@
 	* Now: Select all household total power from `0~96` timeblock, but can change from `sample_time~96` timeblock
 
 * **NOTE**: `demand response` & `uncontrollable load` not test yet
+
+## 2021/06/03 We move the 50 household version to this repository [fifty_DHEMS](https://github.com/colin861209/fifty_DHEMS)
